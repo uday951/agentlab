@@ -1,0 +1,16 @@
+export const demoData = {
+  projectName: 'E-commerce Agent',
+  environment: 'ShopSphere Production',
+  agent: 'Support-AI v2.3',
+  totalSimulations: 1248,
+  taskSuccess: 91.8,
+  grounding: 94.2,
+  toolAccuracy: 88.7,
+  policyCompliance: 97.1,
+  avgLatency: 2.1,
+  avgCost: 0.03,
+  failureRate: 8.2,
+  scenarios: [],
+  failures: [],
+  events: [],
+};
