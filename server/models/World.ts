@@ -5,6 +5,12 @@ export interface IWorldDocument extends Document {
   name: string;
   industry: string;
   description: string;
+  sourceAgentId?: string;
+  generatedBy?: 'ai' | 'fallback' | 'manual';
+  generationStatus?: 'analyzing' | 'generating' | 'validating' | 'ready' | 'needs_configuration';
+  detectedDomain?: string;
+  detectedCapabilities?: string[];
+  version?: number;
   systemRules: string[];
   simulatedTools: Array<{
     name: string;
@@ -39,6 +45,16 @@ const WorldSchema = new Schema<IWorldDocument>(
     name: { type: String, required: true, trim: true, index: true },
     industry: { type: String, required: true, index: true },
     description: { type: String, default: '' },
+    sourceAgentId: { type: String, index: true },
+    generatedBy: { type: String, enum: ['ai', 'fallback', 'manual'], default: 'manual' },
+    generationStatus: {
+      type: String,
+      enum: ['analyzing', 'generating', 'validating', 'ready', 'needs_configuration'],
+      default: 'ready',
+    },
+    detectedDomain: { type: String },
+    detectedCapabilities: { type: [String], default: [] },
+    version: { type: Number, default: 1 },
     systemRules: { type: [String], default: [] },
     simulatedTools: [
       {

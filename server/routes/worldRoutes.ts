@@ -3,6 +3,12 @@ const { Router } = express;
 import { z } from 'zod';
 import type { IStorageStore } from '../storage/storage.ts';
 import type { World, Scenario } from '../types.ts';
+import { EnvironmentGenerator } from '../sim/environmentGenerator.ts';
+
+const AutoGenerateSchema = z.object({
+  agentId: z.string().min(1),
+  forceRegenerate: z.boolean().optional().default(false),
+});
 
 const WorldSchema = z.object({
   name: z.string().min(2),
@@ -36,6 +42,36 @@ const ScenarioSchema = z.object({
 
 export function createWorldRouter(storage: IStorageStore): Router {
   const router = Router();
+  const environmentGenerator = new EnvironmentGenerator(storage);
+
+  // POST /api/worlds/auto-generate
+  router.post('/auto-generate', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const validated = AutoGenerateSchema.parse(req.body);
+      const result = await environmentGenerator.generateEnvironmentForAgent(
+        validated.agentId,
+        validated.forceRegenerate
+      );
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      next(err);
+    }
+  });
+
+  // GET /api/worlds/agent/:agentId
+  router.get('/agent/:agentId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const worlds = await storage.getWorlds();
+      const matched = worlds.find((w) => w.sourceAgentId === req.params.agentId);
+      if (!matched) {
+        return res.json({ success: true, data: null });
+      }
+      const scenarios = await storage.getScenariosForWorld(matched.id);
+      res.json({ success: true, data: { world: matched, scenarios } });
+    } catch (err: any) {
+      next(err);
+    }
+  });
 
   // GET /api/worlds
   router.get('/', async (_req: Request, res: Response, next: NextFunction) => {

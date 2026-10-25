@@ -112,110 +112,76 @@ export class DeepSeekAgentAdapter implements AgentAdapter {
       };
     }
 
-    // Prepare OpenAI-compatible Tool Definitions for DeepSeek
-    const openAiTools = [
-      {
-        type: 'function',
-        function: {
-          name: 'lookup_order',
-          description: 'Looks up customer order details by orderId (e.g. ORD-9821) or customerEmail.',
-          parameters: {
-            type: 'object',
-            properties: {
-              orderId: { type: 'string', description: 'Order ID such as ORD-9821' },
-              customerEmail: { type: 'string', description: 'Customer email address' },
+    // Prepare OpenAI-compatible Tool Definitions dynamically from World specification
+    const openAiTools = (world.simulatedTools && world.simulatedTools.length > 0)
+      ? world.simulatedTools
+          .filter((t) => t.enabled !== false)
+          .map((t) => ({
+            type: 'function',
+            function: {
+              name: t.name,
+              description: t.description || `Executes ${t.name}`,
+              parameters: t.parameters || { type: 'object', properties: {} },
+            },
+          }))
+      : [
+          {
+            type: 'function',
+            function: {
+              name: 'lookup_order',
+              description: 'Looks up customer order details by orderId or customerEmail.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  orderId: { type: 'string', description: 'Order ID' },
+                  customerEmail: { type: 'string', description: 'Customer email' },
+                },
+              },
             },
           },
-        },
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'retrieve_policy',
-          description: 'Retrieves return, refund, and warranty policy documents.',
-          parameters: {
-            type: 'object',
-            properties: {
-              policyRef: { type: 'string', description: 'Policy number, e.g. "Policy #24", "Policy #12", "Policy #05"' },
-              topic: { type: 'string', description: 'Policy topic keyword, e.g. "electronics", "refund", "opened"' },
+          {
+            type: 'function',
+            function: {
+              name: 'retrieve_policy',
+              description: 'Retrieves return, refund, and warranty policy documents.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  policyRef: { type: 'string', description: 'Policy number' },
+                  topic: { type: 'string', description: 'Policy topic' },
+                },
+              },
             },
           },
-        },
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'check_refund_eligibility',
-          description: 'Checks if an order meets policy criteria for a return and computes restocking fee.',
-          parameters: {
-            type: 'object',
-            properties: {
-              orderId: { type: 'string', description: 'Order identifier' },
-              itemCondition: { type: 'string', enum: ['unopened', 'opened', 'damaged'] },
-              daysAgo: { type: 'number', description: 'Number of days since order delivery' },
-            },
-            required: ['orderId'],
-          },
-        },
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'process_refund',
-          description: 'Executes financial refund via payment gateway.',
-          parameters: {
-            type: 'object',
-            properties: {
-              orderId: { type: 'string', description: 'Order ID' },
-              amount: { type: 'number', description: 'Refund amount' },
-              reason: { type: 'string', description: 'Reason for refund' },
-            },
-            required: ['orderId', 'amount', 'reason'],
-          },
-        },
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'escalate_to_manager',
-          description: 'Escalates an exception, payment failure, or complex case to Tier-2 Operations.',
-          parameters: {
-            type: 'object',
-            properties: {
-              orderId: { type: 'string', description: 'Order identifier' },
-              reason: { type: 'string', description: 'Escalation rationale' },
-              priority: { type: 'string', enum: ['low', 'normal', 'high', 'critical'] },
-            },
-            required: ['orderId', 'reason'],
-          },
-        },
-      },
-    ];
+        ];
 
-    // Build Prompt Messages
-    const systemPrompt = `You are an AI customer support and operations agent for ShopSphere e-commerce.
-Operating Rules:
+    // Build Prompt Messages dynamically
+    const systemPrompt = `You are an AI agent operating in the "${world.name}" simulation environment (${world.industry}).
+Environment Objective & Constraints:
+${world.description}
+
+System Rules & Policies:
 ${world.systemRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
 
-Policy Knowledge Base:
+Knowledge Documents & Reference Manual:
 ${retrievedPassages.map((p) => `--- [${p.section}] ---\n${p.text}`).join('\n\n')}
 
-Customer Info:
-- Name: ${scenario.customerProfile.name}
-- Email: ${scenario.customerProfile.email}
-- Tier: ${scenario.customerProfile.tier}
-- Trait: ${scenario.customerProfile.behaviorTrait}
+User / Subject Context:
+- Name: ${scenario.customerProfile?.name || 'User'}
+- Email: ${scenario.customerProfile?.email || 'user@example.com'}
+- Tier / Priority: ${scenario.customerProfile?.tier || 'standard'}
+- Behavior Trait: ${scenario.customerProfile?.behaviorTrait || 'standard'}
 
-Order Context:
-${JSON.stringify(scenario.orderContext || {})}
+Scenario Context:
+${JSON.stringify(scenario.orderContext || world.initialData || {})}
 
 Guidelines:
-1. Always look up or verify the customer order using tools before taking financial actions.
-2. If customer requests a refund, check eligibility and relevant policies (Policy #24 for standard unopened items, Policy #12 for opened electronics, Policy #05 for security/auth).
-3. If payment or processing tool fails, gracefully escalate to a manager rather than pretending it succeeded.
+1. Always inspect context and call relevant tools to verify prerequisites before performing state-changing actions.
+2. If any tool reports an error or simulated failure, handle the exception gracefully (e.g. escalate, report details) rather than pretending it succeeded.
+3. Strictly enforce the environment rules and guardrails.
 4. Conclude your final message with an exact structured tag block:
-DECISION: <process_refund | reject_refund | escalate_manager | request_info>
-POLICY: <Policy #24 | Policy #12 | Policy #05>
+DECISION: <process_refund | reject_refund | escalate_manager | request_info | provide_info>
+POLICY: <cited policy or rule, or "None">
 RATIONALE: <one sentence summary>`;
 
     const messages: any[] = [

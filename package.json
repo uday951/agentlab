@@ -10,7 +10,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "start": "node --experimental-strip-types server/index.ts",
-    "test": "node --experimental-strip-types --test tests/adapters.test.ts tests/tools.test.ts tests/rag.test.ts tests/evaluation.test.ts tests/models.test.ts"
+    "test": "node --experimental-strip-types --test tests/adapters.test.ts tests/tools.test.ts tests/rag.test.ts tests/evaluation.test.ts tests/models.test.ts tests/environmentGenerator.test.ts"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",

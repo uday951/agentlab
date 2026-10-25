@@ -92,11 +92,148 @@ export class ShopSphereToolRegistry {
         result = this.escalateToManager(params.orderId, params.reason, params.priority);
         break;
 
-      default:
+      // Software Engineering & DevOps Tools
+      case 'read_file': {
+        const filePath = params.path || 'src/index.ts';
+        const fileContent = context.world?.initialData?.files?.[filePath] || '// Virtual file contents for ' + filePath + '\nexport const ready = true;';
+        result = { success: true, data: { path: filePath, content: fileContent } };
+        break;
+      }
+
+      case 'run_unit_tests': {
         result = {
-          success: false,
-          error: `Unknown tool: ${toolName}. Available tools: lookup_order, retrieve_policy, check_refund_eligibility, process_refund, escalate_to_manager`,
+          success: true,
+          data: {
+            testSuite: params.testSuite || 'all',
+            passed: true,
+            totalTests: 14,
+            passedTests: 14,
+            failedTests: 0,
+            durationMs: 420,
+          },
         };
+        break;
+      }
+
+      case 'lint_code': {
+        result = {
+          success: true,
+          data: {
+            clean: true,
+            filesChecked: 8,
+            warnings: 0,
+            errors: 0,
+          },
+        };
+        break;
+      }
+
+      case 'execute_build': {
+        result = {
+          success: true,
+          data: {
+            buildId: 'bld-' + Math.random().toString(36).slice(2, 8),
+            target: params.target || 'production',
+            status: 'success',
+            bundleSizeKb: 148,
+          },
+        };
+        break;
+      }
+
+      case 'create_pull_request': {
+        result = {
+          success: true,
+          data: {
+            prNumber: Math.floor(Math.random() * 50) + 1,
+            title: params.title || 'Automated feature verification',
+            branch: params.branch || 'feature/verification',
+            status: 'opened',
+            url: `https://github.com/organization/repo/pull/${Math.floor(Math.random() * 50) + 1}`,
+          },
+        };
+        break;
+      }
+
+      // Research & Evidence Synthesis Tools
+      case 'search_documents': {
+        const query = (params.query || '').toLowerCase();
+        const docs = context.world?.knowledgeDocuments || [];
+        const matches = docs.filter(
+          (d) => d.title.toLowerCase().includes(query) || d.content.toLowerCase().includes(query)
+        );
+        result = {
+          success: true,
+          data: {
+            query: params.query,
+            totalMatches: matches.length > 0 ? matches.length : 1,
+            documents: matches.length > 0 ? matches : docs.slice(0, 2),
+          },
+        };
+        break;
+      }
+
+      case 'fetch_source_citation': {
+        const doi = params.doi || '10.1038/s41586-024-0012';
+        const paper = context.world?.initialData?.papers?.find((p: any) => p.doi === doi) || {
+          doi,
+          title: 'Mechanistic Circuits in Large Language Models',
+          year: 2024,
+          verified: true,
+        };
+        result = { success: true, data: paper };
+        break;
+      }
+
+      case 'verify_fact': {
+        result = {
+          success: true,
+          data: {
+            claim: params.claim,
+            verified: true,
+            confidence: 0.96,
+            evidenceCitation: 'Corpus Document #01',
+          },
+        };
+        break;
+      }
+
+      // Dynamic Custom Simulated Tools
+      default: {
+        const definedTool = context.world?.simulatedTools?.find((t) => t.name === toolName);
+        if (definedTool) {
+          result = {
+            success: true,
+            data: {
+              tool: toolName,
+              executed: true,
+              inputParameters: params,
+              output: `Simulated operation for ${toolName} completed successfully.`,
+              timestamp: new Date().toISOString(),
+            },
+          };
+        } else {
+          result = {
+            success: false,
+            error: `Unknown tool: ${toolName}. Available tools: ${[
+              'lookup_order',
+              'retrieve_policy',
+              'check_refund_eligibility',
+              'process_refund',
+              'escalate_to_manager',
+              'read_file',
+              'run_unit_tests',
+              'lint_code',
+              'execute_build',
+              'create_pull_request',
+              'search_documents',
+              'fetch_source_citation',
+              'verify_fact',
+              ...(context.world?.simulatedTools?.map((t) => t.name) || []),
+            ].join(', ')}`,
+          };
+        }
+      }
     }
 
     if (context.toolCallHistory) {

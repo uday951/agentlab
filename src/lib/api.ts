@@ -54,6 +54,12 @@ export interface World {
   name: string;
   industry: string;
   description: string;
+  sourceAgentId?: string;
+  generatedBy?: 'ai' | 'fallback' | 'manual';
+  generationStatus?: 'analyzing' | 'generating' | 'validating' | 'ready' | 'needs_configuration';
+  detectedDomain?: string;
+  detectedCapabilities?: string[];
+  version?: number;
   systemRules: string[];
   knowledgeDocuments: KnowledgeDocument[];
   simulatedTools: {
@@ -479,5 +485,36 @@ export const api = {
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || json.message || 'GitHub token test failed');
     return json;
+  },
+
+  // Auto-Generate Environment for Agent
+  autoGenerateWorld: async (
+    agentId: string,
+    forceRegenerate = false
+  ): Promise<{
+    world: World;
+    scenarios: Scenario[];
+    isNew: boolean;
+    generatedBy: 'ai' | 'fallback';
+    detectedDomain: string;
+    detectedCapabilities: string[];
+  }> => {
+    const res = await fetch(`${API_BASE}/worlds/auto-generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId, forceRegenerate }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || json.message || 'Failed to generate environment');
+    return json.data;
+  },
+
+  getWorldForAgent: async (
+    agentId: string
+  ): Promise<{ world: World; scenarios: Scenario[] } | null> => {
+    const res = await fetch(`${API_BASE}/worlds/agent/${agentId}`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || json.message || 'Failed to fetch agent world');
+    return json.data;
   },
 };

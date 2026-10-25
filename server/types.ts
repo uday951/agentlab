@@ -81,6 +81,12 @@ export interface World {
   name: string;
   industry: string;
   description: string;
+  sourceAgentId?: string;
+  generatedBy?: 'ai' | 'fallback' | 'manual';
+  generationStatus?: 'analyzing' | 'generating' | 'validating' | 'ready' | 'needs_configuration';
+  detectedDomain?: string;
+  detectedCapabilities?: string[];
+  version?: number;
   systemRules: string[];
   knowledgeDocuments: KnowledgeDocument[];
   simulatedTools: SimulatedTool[];
