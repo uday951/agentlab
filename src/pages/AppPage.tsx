@@ -13,7 +13,14 @@ import { api, type SystemHealth } from '../lib/api';
 import { AlertTriangle, Database } from 'lucide-react';
 
 export default function AppPage() {
-  const [active, setActive] = useState('overview');
+  const [active, setActive] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam) return tabParam;
+    }
+    return 'overview';
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeExperimentId, setActiveExperimentId] = useState<string | undefined>(undefined);
   const [isSimulating, setIsSimulating] = useState(false);
