@@ -1222,6 +1222,7 @@ export interface McpBenchmarkJob {
   };
   providerProjectId?: string;
   retrievedCodeDir?: string;
+  resultProjectId?: string;
   benchmarkRunId?: string;
   overallScore?: number;
   failureReason?: string;

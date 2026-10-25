@@ -57,6 +57,11 @@ class MockMcpStorage implements Partial<IStorageStore> {
     return this.benchmarkDefinitions.get(id) || null;
   }
 
+  async saveBenchmarkDefinition(def: BenchmarkDefinition): Promise<BenchmarkDefinition> {
+    this.benchmarkDefinitions.set(def.id, def);
+    return def;
+  }
+
   async getBenchmarkProjects(): Promise<BenchmarkProject[]> {
     return Array.from(this.benchmarkProjects.values());
   }

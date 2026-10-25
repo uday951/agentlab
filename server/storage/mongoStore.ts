@@ -1060,6 +1060,7 @@ export class MongoStore implements IStorageStore {
       },
       providerProjectId: raw.providerProjectId,
       retrievedCodeDir: raw.retrievedCodeDir,
+      resultProjectId: raw.resultProjectId,
       benchmarkRunId: raw.benchmarkRunId,
       overallScore: raw.overallScore,
       failureReason: raw.failureReason,

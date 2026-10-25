@@ -780,8 +780,18 @@ export function createMcpRouter(storage: IStorageStore): Router {
   });
 
   // ==========================================
-  // 12. Get Benchmark Job Status
+  // 12. List & Get Benchmark Jobs
   // ==========================================
+  router.get('/benchmark', async (req: Request, res: Response) => {
+    try {
+      const ownerId = (req as any).user?.id || (req.query.ownerId as string);
+      const jobs = await (storage as any).getMcpBenchmarkJobs?.(ownerId) || [];
+      res.json({ success: true, jobs });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   router.get('/benchmark/:jobId', async (req: Request, res: Response) => {
     try {
       const job = await storage.getMcpBenchmarkJob(req.params.jobId);

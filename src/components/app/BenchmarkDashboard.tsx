@@ -219,6 +219,16 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
           setActiveMcpJob(updated);
           if (updated.status === 'completed') {
             await loadAllData();
+            if (updated.benchmarkRunId) {
+              const run = await api.getBenchmarkRun(updated.benchmarkRunId).catch(() => null);
+              if (run) setSelectedRun(run);
+            }
+            if (updated.resultProjectId) {
+              const proj = await api.getBenchmarkProject(updated.resultProjectId).catch(() => null);
+              if (proj) setSelectedProject(proj);
+            }
+            setShowStartModal(false);
+            setActiveTab('results');
           }
         } catch {}
       }, 2500);
@@ -227,6 +237,13 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
       if (mcpPollTimerRef.current) clearTimeout(mcpPollTimerRef.current);
     };
   }, [activeMcpJob]);
+
+  // Auto-select latest run if on results tab without active selection
+  useEffect(() => {
+    if (activeTab === 'results' && !selectedRun && runs.length > 0) {
+      setSelectedRun(runs[0]);
+    }
+  }, [activeTab, selectedRun, runs]);
 
   // Poll active generation job
   useEffect(() => {
@@ -720,15 +737,22 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
             </button>
           </>
         )}
-        {selectedRun && (
+        {(selectedRun || runs.length > 0) && (
           <button
-            onClick={() => setActiveTab('results')}
+            onClick={() => {
+              if (!selectedRun && runs.length > 0) {
+                setSelectedRun(runs[0]);
+              }
+              setActiveTab('results');
+            }}
             className={`px-3 py-1.5 rounded transition-colors cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'results' ? 'bg-burgundy text-ivory font-bold' : 'text-burgundy/60 hover:text-burgundy'
             }`}
           >
             <Zap size={13} className="text-copper" />
-            <span>Run Results ({selectedRun.summary.overallScore}%)</span>
+            <span>
+              Run Results {selectedRun ? `(${selectedRun.summary.overallScore}%)` : `(${runs.length})`}
+            </span>
           </button>
         )}
       </div>
@@ -2167,11 +2191,20 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
       )}
 
       {/* VIEW: Run Results with Evidence & Screenshots */}
+      {activeTab === 'results' && !selectedRun && runs.length === 0 && (
+        <div className="bg-ivory border border-copper/20 rounded p-12 text-center shadow-sm">
+          <Zap size={32} className="mx-auto text-copper mb-3 opacity-60" />
+          <h3 className="text-base font-bold text-burgundy font-display">No Benchmark Runs Yet</h3>
+          <p className="text-xs text-burgundy/70 mt-1 max-w-md mx-auto">
+            Connect an AI coding platform via MCP or import a project to generate and execute an automated 5-pillar benchmark run.
+          </p>
+        </div>
+      )}
       {activeTab === 'results' && selectedRun && (
         <div className="bg-ivory border border-copper/20 rounded p-6 shadow-sm space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-copper/15">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-lg font-bold font-display text-burgundy">
                   Benchmark Run Results: {selectedRun.projectName}
                 </h2>
@@ -2184,6 +2217,22 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
                 >
                   {selectedRun.status.toUpperCase()}
                 </span>
+                {runs.length > 1 && (
+                  <select
+                    value={selectedRun.id}
+                    onChange={(e) => {
+                      const found = runs.find((r) => r.id === e.target.value);
+                      if (found) setSelectedRun(found);
+                    }}
+                    className="text-xs font-mono border border-copper/30 rounded px-2 py-1 bg-white text-burgundy cursor-pointer ml-1"
+                  >
+                    {runs.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.projectName} ({r.summary.overallScore}%) — {r.id.slice(0, 8)}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="text-xs font-mono text-burgundy/60 mt-1">
                 Run ID: {selectedRun.id} • Completed:{' '}
@@ -2507,14 +2556,22 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
                           type="button"
                           onClick={async () => {
                             setShowStartModal(false);
-                            setActiveMcpJob(null);
                             await loadAllData();
-                            setActiveTab('dashboard');
+                            if (activeMcpJob.benchmarkRunId) {
+                              const run = await api.getBenchmarkRun(activeMcpJob.benchmarkRunId).catch(() => null);
+                              if (run) setSelectedRun(run);
+                            }
+                            if (activeMcpJob.resultProjectId) {
+                              const proj = await api.getBenchmarkProject(activeMcpJob.resultProjectId).catch(() => null);
+                              if (proj) setSelectedProject(proj);
+                            }
+                            setActiveMcpJob(null);
+                            setActiveTab('results');
                           }}
                           className="px-4 py-2 rounded bg-burgundy text-ivory font-bold hover:bg-burgundy/90 transition-colors flex items-center gap-1.5 cursor-pointer text-xs"
                         >
                           <Play size={12} className="text-copper" />
-                          <span>View Dashboard & Results</span>
+                          <span>View Benchmark Results</span>
                         </button>
                       )}
                       {['completed', 'failed'].includes(activeMcpJob.status) && (

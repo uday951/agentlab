@@ -29,6 +29,7 @@ const McpBenchmarkJobSchema = new Schema(
     supportedCapabilities: { type: Schema.Types.Mixed, default: {} },
     providerProjectId: { type: String },
     retrievedCodeDir: { type: String },
+    resultProjectId: { type: String },
     benchmarkRunId: { type: String },
     overallScore: { type: Number },
     failureReason: { type: String },
