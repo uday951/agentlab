@@ -115,7 +115,7 @@ test('CliAgentAdapter: blocks execution when ENABLE_CLI_RUNNER is not set', asyn
   assert.match(result.agentOutput.message, /ENABLE_CLI_RUNNER=true/);
 });
 
-test('ProjectImportAdapter: reports configuration required when AGENT_RUNNER_URL is missing', async () => {
+test('ProjectImportAdapter: initiates platform-managed sandbox runner and catches invalid repo', async () => {
   delete process.env.AGENT_RUNNER_URL;
   const importAdapter = new ProjectImportAdapter();
 
@@ -129,7 +129,7 @@ test('ProjectImportAdapter: reports configuration required when AGENT_RUNNER_URL
     agent: {
       ...defaultSampleAgent,
       connectionType: 'import',
-      repoUrl: 'https://github.com/example/agent',
+      repoUrl: 'https://github.com/nonexistent-org-2026/fake-agent',
       entrypoint: 'agent.py',
     },
     world: defaultShopSphereWorld,
@@ -141,9 +141,9 @@ test('ProjectImportAdapter: reports configuration required when AGENT_RUNNER_URL
     emitEvent,
   });
 
-  assert.equal(result.status, 'error');
-  assert.equal(result.evaluation.failureCategory, 'Isolated Runner Not Configured');
-  assert.match(result.agentOutput.message, /AGENT_RUNNER_URL/);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.evaluation.passed, false);
+  assert.ok(result.agentOutput.message);
 });
 
 test('DeepSeekAgentAdapter: blocks adversarial prompt injection under Policy #05', async () => {

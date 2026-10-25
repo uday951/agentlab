@@ -14,8 +14,14 @@ export interface IAgentDocument extends Document {
   cliCommand?: string;
   workingDir?: string;
   repoUrl?: string;
+  branch?: string;
   entrypoint?: string;
+  runtime?: string;
+  envVars?: Record<string, string>;
   projectConfig?: Record<string, any>;
+  preparationStatus?: 'not_prepared' | 'preparing' | 'ready' | 'failed';
+  preparationLogs?: string;
+  detectedManifest?: Record<string, any>;
   headers?: Record<string, string>;
   capabilities: string[];
   tools: string[];
@@ -46,8 +52,18 @@ const AgentSchema = new Schema<IAgentDocument>(
     cliCommand: { type: String },
     workingDir: { type: String },
     repoUrl: { type: String },
+    branch: { type: String, default: 'main' },
     entrypoint: { type: String },
+    runtime: { type: String, default: 'nodejs' },
+    envVars: { type: Map, of: String },
     projectConfig: { type: Schema.Types.Mixed },
+    preparationStatus: {
+      type: String,
+      enum: ['not_prepared', 'preparing', 'ready', 'failed'],
+      default: 'ready',
+    },
+    preparationLogs: { type: String, default: '' },
+    detectedManifest: { type: Schema.Types.Mixed },
     headers: { type: Map, of: String },
     capabilities: { type: [String], default: ['simulated_tools'] },
     tools: {

@@ -12,6 +12,7 @@ import { createWorldRouter } from './routes/worldRoutes.ts';
 import { createKnowledgeRouter } from './routes/knowledgeRoutes.ts';
 import { createExperimentRouter } from './routes/experimentRoutes.ts';
 import { createDemoRouter } from './routes/demoRoutes.ts';
+import { createInfrastructureRouter } from './routes/infrastructureRoutes.ts';
 
 dotenv.config();
 
@@ -89,6 +90,7 @@ async function startServer() {
   app.use('/api/worlds/:worldId/documents', createKnowledgeRouter(storage));
   app.use('/api/experiments', createExperimentRouter(storage, engine));
   app.use('/api/demo', createDemoRouter(storage, engine));
+  app.use('/api/infrastructure', createInfrastructureRouter(storage));
 
   // Centralized Error Handling Middleware
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

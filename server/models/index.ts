@@ -5,3 +5,4 @@ export { ScenarioModel, type IScenarioDocument } from './Scenario.ts';
 export { ExperimentModel, type IExperimentDocument, type IScenarioRunSubdoc } from './Experiment.ts';
 export { ExecutionEventModel, type IExecutionEventDocument } from './ExecutionEvent.ts';
 export { EvaluationResultModel, type IEvaluationResultDocument } from './EvaluationResult.ts';
+export { PlatformConfigModel, type IPlatformConfigDocument } from './PlatformConfig.ts';

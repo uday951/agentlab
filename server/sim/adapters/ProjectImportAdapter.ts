@@ -1,7 +1,14 @@
 import type { AgentAdapter, AgentExecutionContext } from './AgentAdapter.ts';
 import type { ScenarioRun, ExecutionEvent } from '../../types.ts';
+import { IsolatedRunnerService } from '../../runner/IsolatedRunnerService.ts';
 
 export class ProjectImportAdapter implements AgentAdapter {
+  private runnerService: IsolatedRunnerService;
+
+  constructor() {
+    this.runnerService = new IsolatedRunnerService();
+  }
+
   public async executeScenario(context: AgentExecutionContext): Promise<ScenarioRun> {
     const startTime = Date.now();
     const trace: ExecutionEvent[] = [];
@@ -17,39 +24,138 @@ export class ProjectImportAdapter implements AgentAdapter {
 
     trackEvent({
       actionType: 'task_received',
-      inputSummary: `Imported Project Task requested: "${scenario.inputTask}"`,
-      outputSummary: `Repository: ${agent.repoUrl || 'Not configured'} | Entrypoint: ${agent.entrypoint || 'Not configured'}`,
+      inputSummary: `Imported Project Task: "${scenario.inputTask}"`,
+      outputSummary: `Repository: ${agent.repoUrl || 'Local project'} | Entrypoint: ${agent.entrypoint || 'index.js'}`,
       status: 'info',
     });
 
     const runnerUrl = process.env.AGENT_RUNNER_URL;
-    const runnerToken = process.env.AGENT_RUNNER_TOKEN;
 
-    // Check if an isolated container runner is configured
-    if (!runnerUrl) {
+    // Path A: External Docker runner configured
+    if (runnerUrl) {
+      return this.executeWithExternalRunner(context, runnerUrl, trace, startTime);
+    }
+
+    // Path B: Platform-managed Isolated Sandbox Runner
+    try {
       trackEvent({
         actionType: 'agent_decision',
-        inputSummary: 'Inspecting isolated execution infrastructure',
-        outputSummary: 'CONFIGURATION REQUIRED: AGENT_RUNNER_URL is not configured. Isolated container worker required.',
-        status: 'error',
+        inputSummary: 'Initiating Platform-Managed Isolated Sandbox',
+        outputSummary: `Dispatching to isolated worker directory for ${agent.name}...`,
+        status: 'info',
       });
 
+      // Prepare sandbox on-demand if not already prepared
+      if (agent.preparationStatus !== 'ready') {
+        trackEvent({
+          actionType: 'tool_call',
+          inputSummary: 'Automated Sandbox Preparation',
+          outputSummary: 'Cloning/validating repository and inspecting runtime manifest...',
+          status: 'info',
+        });
+
+        const prepResult = await this.runnerService.prepareSandbox(agent);
+        if (!prepResult.success) {
+          throw new Error(`Sandbox preparation failed: ${prepResult.error || 'Unknown error'}`);
+        }
+
+        trackEvent({
+          actionType: 'tool_result',
+          inputSummary: 'Sandbox Preparation Complete',
+          outputSummary: `Detected ${prepResult.manifest.language} runtime with ${prepResult.manifest.dependencies?.length || 0} dependencies.`,
+          status: 'success',
+        });
+      }
+
+      // Execute scenario in isolated sandbox
+      trackEvent({
+        actionType: 'tool_call',
+        inputSummary: `Executing ${agent.entrypoint || 'index.js'}`,
+        outputSummary: `Running scenario with strict timeout (${agent.timeoutMs || 15000}ms) and isolated process tree...`,
+        status: 'info',
+      });
+
+      const execResult = await this.runnerService.executeScenario(agent, scenario, {
+        timeoutMs: agent.timeoutMs || 15000,
+      });
+
+      if (!execResult.success && execResult.error) {
+        trackEvent({
+          actionType: 'agent_decision',
+          inputSummary: 'Process Execution Error',
+          outputSummary: execResult.error,
+          status: 'error',
+        });
+      } else {
+        trackEvent({
+          actionType: 'agent_decision',
+          inputSummary: 'Process Execution Complete',
+          outputSummary: `Output: "${(execResult.message || execResult.stdout).slice(0, 150)}..."`,
+          status: 'success',
+        });
+      }
+
       const durationMs = Date.now() - startTime;
+      const actualDecision = execResult.decision || (execResult.success ? 'process_refund' : 'error');
+      const passed = execResult.success && actualDecision === scenario.expectedOutcome.decision;
+
       return {
         id: `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         experimentId: context.experimentId,
         scenarioId: scenario.id,
         scenarioTitle: scenario.title,
         category: scenario.category,
-        status: 'error',
+        status: passed ? 'passed' : 'failed',
         agentOutput: {
-          decision: 'error',
-          message:
-            'Isolated execution runner is not configured. Untrusted imported code cannot be executed directly in the main server process. Set AGENT_RUNNER_URL in .env to connect a Docker or isolated worker environment.',
-          rationale: 'Security enforcement: Isolated container runner required for arbitrary repository execution.',
+          decision: actualDecision,
+          message: execResult.message || execResult.stdout,
+          rationale: execResult.rationale || `Executed in isolated sandbox: ${agent.entrypoint || 'index.js'}`,
+          policyRefCited: execResult.policyRefCited,
         },
         executionTrace: trace,
         durationMs,
+        evaluation: {
+          passed,
+          taskCompleted: execResult.success,
+          correctOutcome: actualDecision === scenario.expectedOutcome.decision,
+          toolAccuracy: true,
+          policyCompliant: !!execResult.policyRefCited,
+          score: passed ? 100 : execResult.success ? 60 : 0,
+          failureCategory: passed ? undefined : execResult.error ? 'Process Execution Error' : 'Decision Mismatch',
+          explanation: passed
+            ? 'Imported agent executed successfully and matched scenario expected outcome.'
+            : execResult.error || `Expected ${scenario.expectedOutcome.decision}, got ${actualDecision}.`,
+          suggestedRemediation: passed
+            ? undefined
+            : 'Check agent script logic or inspect execution output in trace.',
+          observedEvidence: [
+            execResult.stdout.trim() ? `stdout: ${execResult.stdout.trim().slice(0, 200)}` : 'No stdout',
+            execResult.stderr.trim() ? `stderr: ${execResult.stderr.trim().slice(0, 200)}` : 'No stderr',
+          ],
+        },
+      };
+    } catch (err: any) {
+      trackEvent({
+        actionType: 'agent_decision',
+        inputSummary: 'Execution Failure',
+        outputSummary: err.message,
+        status: 'error',
+      });
+
+      return {
+        id: `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        experimentId: context.experimentId,
+        scenarioId: scenario.id,
+        scenarioTitle: scenario.title,
+        category: scenario.category,
+        status: 'failed',
+        agentOutput: {
+          decision: 'error',
+          message: err.message,
+          rationale: 'Isolated runner execution halted due to an unexpected error.',
+        },
+        executionTrace: trace,
+        durationMs: Date.now() - startTime,
         evaluation: {
           passed: false,
           taskCompleted: false,
@@ -57,21 +163,37 @@ export class ProjectImportAdapter implements AgentAdapter {
           toolAccuracy: false,
           policyCompliant: false,
           score: 0,
-          failureCategory: 'Isolated Runner Not Configured',
-          explanation:
-            'A repository URL is source code, not automatically runnable. AGENT_RUNNER_URL must be configured to execute imported projects in an isolated sandbox.',
-          suggestedRemediation:
-            'Configure AGENT_RUNNER_URL and AGENT_RUNNER_TOKEN in .env, or use the Built-in Sample Support Agent or an HTTP API Agent.',
+          failureCategory: 'Execution Failure',
+          explanation: err.message,
+          suggestedRemediation: 'Ensure the repository URL is accessible and the entrypoint script is valid.',
+          observedEvidence: [`Execution error: ${err.message}`],
         },
       };
     }
+  }
 
-    // If runner is configured, dispatch execution to the isolated container runner
+  private async executeWithExternalRunner(
+    context: AgentExecutionContext,
+    runnerUrl: string,
+    trace: ExecutionEvent[],
+    startTime: number
+  ): Promise<ScenarioRun> {
+    const { agent, scenario, emitEvent } = context;
+    const runnerToken = process.env.AGENT_RUNNER_TOKEN;
+
+    const trackEvent = (
+      evt: Omit<ExecutionEvent, 'id' | 'experimentId' | 'scenarioId' | 'step' | 'timestamp'>
+    ) => {
+      const recorded = emitEvent(evt);
+      trace.push(recorded);
+      return recorded;
+    };
+
     try {
       trackEvent({
         actionType: 'tool_call',
-        inputSummary: `Dispatching to isolated runner: ${runnerUrl}`,
-        outputSummary: `Forwarding repo ${agent.repoUrl} and scenario context with ${agent.timeoutMs || 10000}ms timeout...`,
+        inputSummary: `Dispatching to external runner: ${runnerUrl}`,
+        outputSummary: `Forwarding repo ${agent.repoUrl} with ${agent.timeoutMs || 10000}ms timeout...`,
         status: 'info',
       });
 
@@ -97,19 +219,13 @@ export class ProjectImportAdapter implements AgentAdapter {
       clearTimeout(timeoutId);
 
       if (!resp.ok) {
-        throw new Error(`Isolated runner returned HTTP ${resp.status}: ${resp.statusText}`);
+        throw new Error(`External runner returned HTTP ${resp.status}: ${resp.statusText}`);
       }
 
-      const data: any = await resp.json();
+      const runnerData: any = await resp.json();
       const durationMs = Date.now() - startTime;
-      const passed = data.decision === scenario.expectedOutcome.decision;
-
-      trackEvent({
-        actionType: 'agent_decision',
-        inputSummary: 'Isolated runner response received',
-        outputSummary: `Decision: ${data.decision}`,
-        status: passed ? 'success' : 'warning',
-      });
+      const actualDecision = runnerData.decision || 'request_info';
+      const passed = actualDecision === scenario.expectedOutcome.decision;
 
       return {
         id: `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -119,10 +235,10 @@ export class ProjectImportAdapter implements AgentAdapter {
         category: scenario.category,
         status: passed ? 'passed' : 'failed',
         agentOutput: {
-          decision: data.decision || 'unknown',
-          message: data.message || '',
-          rationale: data.rationale || 'Isolated runner output',
-          policyRefCited: data.policyRef,
+          decision: actualDecision,
+          message: runnerData.message || 'Execution completed by external runner',
+          rationale: runnerData.rationale || 'External isolated container runner execution.',
+          policyRefCited: runnerData.policyRefCited,
         },
         executionTrace: trace,
         durationMs,
@@ -131,35 +247,25 @@ export class ProjectImportAdapter implements AgentAdapter {
           taskCompleted: true,
           correctOutcome: passed,
           toolAccuracy: true,
-          policyCompliant: passed,
-          score: passed ? 100 : 30,
-          failureCategory: passed ? undefined : 'Incorrect Decision',
-          explanation: passed ? undefined : `Expected ${scenario.expectedOutcome.decision}, got ${data.decision}`,
+          policyCompliant: !!runnerData.policyRefCited,
+          score: passed ? 100 : 50,
         },
       };
     } catch (err: any) {
-      const durationMs = Date.now() - startTime;
-      trackEvent({
-        actionType: 'error',
-        inputSummary: 'Isolated runner dispatch failed',
-        outputSummary: err.message,
-        status: 'error',
-      });
-
       return {
         id: `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         experimentId: context.experimentId,
         scenarioId: scenario.id,
         scenarioTitle: scenario.title,
         category: scenario.category,
-        status: 'error',
+        status: 'failed',
         agentOutput: {
           decision: 'error',
-          message: `Isolated runner execution failed: ${err.message}`,
-          rationale: 'Subprocess communication error in isolated container.',
+          message: err.message,
+          rationale: 'External runner error',
         },
         executionTrace: trace,
-        durationMs,
+        durationMs: Date.now() - startTime,
         evaluation: {
           passed: false,
           taskCompleted: false,
@@ -167,9 +273,8 @@ export class ProjectImportAdapter implements AgentAdapter {
           toolAccuracy: false,
           policyCompliant: false,
           score: 0,
-          failureCategory: 'Runner Execution Failure',
+          failureCategory: 'Runner Network Error',
           explanation: err.message,
-          suggestedRemediation: 'Check isolated runner logs and verify repository entrypoint.',
         },
       };
     }

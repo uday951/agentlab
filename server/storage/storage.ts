@@ -1,4 +1,4 @@
-import type { Agent, World, Scenario, Experiment, KnowledgeDocument, ExecutionEvent } from '../types.ts';
+import type { Agent, World, Scenario, Experiment, KnowledgeDocument, ExecutionEvent, PlatformConfig } from '../types.ts';
 
 export class DatabaseNotConfiguredError extends Error {
   constructor(message = 'MongoDB is not configured or reachable. Please set MONGODB_URI in your environment.') {
@@ -43,6 +43,10 @@ export interface IStorageStore {
   // Events
   saveEvents(events: ExecutionEvent[]): Promise<void>;
   getEventsForExperiment(experimentId: string): Promise<ExecutionEvent[]>;
+
+  // Platform Config
+  getPlatformConfig(): Promise<PlatformConfig>;
+  savePlatformConfig(config: Partial<PlatformConfig>): Promise<PlatformConfig>;
 
   // Seed check
   seedDefaultDataIfNeeded(): Promise<void>;

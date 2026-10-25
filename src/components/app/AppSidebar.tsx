@@ -7,6 +7,7 @@ import {
   BarChart2,
   Database,
   Settings,
+  Cpu,
   X,
   ChevronRight,
 } from 'lucide-react';
@@ -19,6 +20,7 @@ export const navItems = [
   { id: 'simulations', icon: Play, label: 'Live Simulations' },
   { id: 'results', icon: BarChart2, label: 'Results & Reports' },
   { id: 'knowledge', icon: Database, label: 'Knowledge (RAG)' },
+  { id: 'infrastructure', icon: Cpu, label: 'Infrastructure Setup' },
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];
 

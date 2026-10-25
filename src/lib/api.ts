@@ -12,8 +12,19 @@ export interface Agent {
   cliCommand?: string;
   workingDir?: string;
   repoUrl?: string;
+  branch?: string;
   entrypoint?: string;
+  runtime?: string;
+  envVars?: Record<string, string>;
   projectConfig?: Record<string, any>;
+  preparationStatus?: 'not_prepared' | 'preparing' | 'ready' | 'failed';
+  preparationLogs?: string;
+  detectedManifest?: {
+    language?: string;
+    runtimeVersion?: string;
+    dependencies?: string[];
+    suggestedEntrypoints?: string[];
+  };
   headers?: Record<string, string>;
   capabilities: string[];
   tools: string[];
@@ -252,6 +263,24 @@ export const api = {
     return json;
   },
 
+  prepareAgent: async (id: string) => {
+    const res = await fetch(`${API_BASE}/agents/${id}/prepare`, { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Agent preparation failed');
+    return json;
+  },
+
+  updateAgent: async (id: string, data: Partial<Agent>): Promise<Agent> => {
+    const res = await fetch(`${API_BASE}/agents/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to update agent');
+    return json.data;
+  },
+
   inspectRepo: async (repoUrl: string) => {
     const res = await fetch(`${API_BASE}/agents/inspect-repo`, {
       method: 'POST',
@@ -417,5 +446,38 @@ export const api = {
       }
     };
     return es;
+  },
+
+  // Infrastructure & Admin Settings
+  getInfrastructure: async (): Promise<any> => {
+    const res = await fetch(`${API_BASE}/infrastructure`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to fetch infrastructure status');
+    return json.data;
+  },
+
+  updateInfrastructure: async (data: any): Promise<any> => {
+    const res = await fetch(`${API_BASE}/infrastructure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to update infrastructure');
+    return json;
+  },
+
+  testLlmProvider: async (): Promise<any> => {
+    const res = await fetch(`${API_BASE}/infrastructure/test-llm`, { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || json.message || 'LLM ping test failed');
+    return json;
+  },
+
+  testGitHubToken: async (): Promise<any> => {
+    const res = await fetch(`${API_BASE}/infrastructure/test-github`, { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || json.message || 'GitHub token test failed');
+    return json;
   },
 };

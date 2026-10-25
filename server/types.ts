@@ -7,15 +7,42 @@ export interface Agent {
   connectionType: ConnectionType;
   model: string;
   endpoint?: string;
+  authType?: 'none' | 'bearer' | 'api_key' | 'basic';
+  authHeader?: string;
   headers?: Record<string, string>;
   requestMapping?: string;
   responseMapping?: string;
   cliCommand?: string;
+  workingDir?: string;
+  repoUrl?: string;
+  branch?: string;
+  entrypoint?: string;
+  runtime?: string;
+  envVars?: Record<string, string>;
+  projectConfig?: Record<string, any>;
+  preparationStatus?: 'not_prepared' | 'preparing' | 'ready' | 'failed';
+  preparationLogs?: string;
+  detectedManifest?: Record<string, any>;
   capabilities: string[];
   tools: string[];
   timeoutMs: number;
   status: 'ready' | 'needs_configuration' | 'error';
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlatformConfig {
+  id: string;
+  llmProvider: string;
+  llmApiKey?: string;
+  llmModel: string;
+  githubToken?: string;
+  enableCliRunner: boolean;
+  agentRunnerMode: 'builtin-sandbox' | 'external-docker';
+  agentRunnerUrl?: string;
+  agentRunnerToken?: string;
+  maxExecutionTimeoutMs: number;
+  maxOutputSizeBytes: number;
   updatedAt: string;
 }
 

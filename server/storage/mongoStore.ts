@@ -1,6 +1,6 @@
 import type { IStorageStore } from './storage.ts';
 import { DatabaseNotConfiguredError } from './storage.ts';
-import type { Agent, World, Scenario, Experiment, KnowledgeDocument, ExecutionEvent } from '../types.ts';
+import type { Agent, World, Scenario, Experiment, KnowledgeDocument, ExecutionEvent, PlatformConfig } from '../types.ts';
 import {
   AgentModel,
   WorldModel,
@@ -9,6 +9,7 @@ import {
   ExperimentModel,
   ExecutionEventModel,
   EvaluationResultModel,
+  PlatformConfigModel,
 } from '../models/index.ts';
 import { defaultShopSphereWorld, defaultScenarios, defaultSampleAgent, defaultDeepSeekAgent } from './seedData.ts';
 
@@ -240,6 +241,66 @@ export class MongoStore implements IStorageStore {
     return docs.map(this.mapEvent);
   }
 
+  // --- Platform Configuration ---
+  public async getPlatformConfig(): Promise<PlatformConfig> {
+    this.assertConnected();
+    let config = await PlatformConfigModel.findOne({ id: 'default' }).lean();
+    if (!config) {
+      const created = await PlatformConfigModel.create({
+        id: 'default',
+        llmProvider: process.env.LLM_PROVIDER || 'deepseek',
+        llmApiKey: process.env.LLM_API_KEY || '',
+        llmModel: process.env.LLM_MODEL || 'deepseek-chat',
+        githubToken: process.env.GITHUB_TOKEN || '',
+        enableCliRunner: process.env.ENABLE_CLI_RUNNER === 'true',
+        agentRunnerMode: (process.env.AGENT_RUNNER_URL ? 'external-docker' : 'builtin-sandbox') as any,
+        agentRunnerUrl: process.env.AGENT_RUNNER_URL || '',
+        agentRunnerToken: process.env.AGENT_RUNNER_TOKEN || '',
+        maxExecutionTimeoutMs: 15000,
+        maxOutputSizeBytes: 65536,
+      });
+      config = created.toObject();
+    }
+    return {
+      id: config.id,
+      llmProvider: config.llmProvider || 'deepseek',
+      llmApiKey: config.llmApiKey || '',
+      llmModel: config.llmModel || 'deepseek-chat',
+      githubToken: config.githubToken || '',
+      enableCliRunner: !!config.enableCliRunner,
+      agentRunnerMode: config.agentRunnerMode || 'builtin-sandbox',
+      agentRunnerUrl: config.agentRunnerUrl || '',
+      agentRunnerToken: config.agentRunnerToken || '',
+      maxExecutionTimeoutMs: config.maxExecutionTimeoutMs || 15000,
+      maxOutputSizeBytes: config.maxOutputSizeBytes || 65536,
+      updatedAt: config.updatedAt ? new Date(config.updatedAt).toISOString() : new Date().toISOString(),
+    };
+  }
+
+  public async savePlatformConfig(updates: Partial<PlatformConfig>): Promise<PlatformConfig> {
+    this.assertConnected();
+    const doc = await PlatformConfigModel.findOneAndUpdate(
+      { id: 'default' },
+      { $set: updates },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    ).lean();
+
+    return {
+      id: doc.id,
+      llmProvider: doc.llmProvider || 'deepseek',
+      llmApiKey: doc.llmApiKey || '',
+      llmModel: doc.llmModel || 'deepseek-chat',
+      githubToken: doc.githubToken || '',
+      enableCliRunner: !!doc.enableCliRunner,
+      agentRunnerMode: doc.agentRunnerMode || 'builtin-sandbox',
+      agentRunnerUrl: doc.agentRunnerUrl || '',
+      agentRunnerToken: doc.agentRunnerToken || '',
+      maxExecutionTimeoutMs: doc.maxExecutionTimeoutMs || 15000,
+      maxOutputSizeBytes: doc.maxOutputSizeBytes || 65536,
+      updatedAt: doc.updatedAt ? new Date(doc.updatedAt).toISOString() : new Date().toISOString(),
+    };
+  }
+
   // --- Seed Data Check ---
   public async seedDefaultDataIfNeeded(): Promise<void> {
     if (!this.connected) return;
@@ -309,8 +370,14 @@ export class MongoStore implements IStorageStore {
       cliCommand: raw.cliCommand,
       workingDir: raw.workingDir,
       repoUrl: raw.repoUrl,
+      branch: raw.branch || 'main',
       entrypoint: raw.entrypoint,
+      runtime: raw.runtime || 'nodejs',
+      envVars: raw.envVars instanceof Map ? Object.fromEntries(raw.envVars) : raw.envVars,
       projectConfig: raw.projectConfig,
+      preparationStatus: raw.preparationStatus || 'ready',
+      preparationLogs: raw.preparationLogs || '',
+      detectedManifest: raw.detectedManifest,
       headers: raw.headers instanceof Map ? Object.fromEntries(raw.headers) : raw.headers,
       capabilities: raw.capabilities || [],
       tools: raw.tools || [],

@@ -9,6 +9,7 @@ import { SimulationCenter } from '../components/app/SimulationCenter';
 import { ResultsView } from '../components/app/ResultsView';
 import { KnowledgeView } from '../components/app/KnowledgeView';
 import { SettingsView } from '../components/app/SettingsView';
+import { InfrastructureView } from '../components/app/InfrastructureView';
 import { api, type SystemHealth } from '../lib/api';
 import { AlertTriangle, Database } from 'lucide-react';
 
@@ -96,6 +97,8 @@ export default function AppPage() {
         );
       case 'knowledge':
         return <KnowledgeView />;
+      case 'infrastructure':
+        return <InfrastructureView />;
       case 'settings':
         return <SettingsView />;
       default:

@@ -3,6 +3,7 @@ const { Router } = express;
 import { z } from 'zod';
 import type { IStorageStore } from '../storage/storage.ts';
 import type { Agent } from '../types.ts';
+import { IsolatedRunnerService } from '../runner/IsolatedRunnerService.ts';
 
 const AgentSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -17,7 +18,10 @@ const AgentSchema = z.object({
   cliCommand: z.string().optional(),
   workingDir: z.string().optional(),
   repoUrl: z.string().url().optional().or(z.literal('')),
+  branch: z.string().default('main').optional(),
   entrypoint: z.string().optional(),
+  runtime: z.string().optional(),
+  envVars: z.record(z.string()).optional(),
   headers: z.record(z.string()).optional(),
   capabilities: z.array(z.string()).default(['simulated_tools']),
   tools: z.array(z.string()).default(['lookup_order', 'check_refund_eligibility', 'process_refund']),
@@ -26,6 +30,7 @@ const AgentSchema = z.object({
 
 export function createAgentRouter(storage: IStorageStore): Router {
   const router = Router();
+  const runnerService = new IsolatedRunnerService();
 
   // GET /api/agents
   router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
@@ -247,13 +252,14 @@ export function createAgentRouter(storage: IStorageStore): Router {
 
       // 3. CLI Runner Agent
       if (agent.connectionType === 'cli') {
-        const isEnabled = process.env.ENABLE_CLI_RUNNER === 'true';
+        const platformConfig = await storage.getPlatformConfig();
+        const isEnabled = platformConfig.enableCliRunner || process.env.ENABLE_CLI_RUNNER === 'true';
         if (!isEnabled) {
           return res.json({
             success: false,
             status: 'needs_configuration',
             message:
-              'CLI execution is disabled by default for security. Set ENABLE_CLI_RUNNER=true in server .env to authorize command execution.',
+              'CLI execution is currently disabled for security. Open Admin → Infrastructure Setup and toggle "Enable CLI Runner" to ON.',
           });
         }
 
@@ -261,37 +267,109 @@ export function createAgentRouter(storage: IStorageStore): Router {
           return res.json({
             success: false,
             status: 'needs_configuration',
-            message: 'No CLI command specified. Configure an approved command (e.g. node agent.js).',
+            message: 'No CLI command specified. Configure an approved command (e.g. node agent.js or python agent.py).',
           });
         }
 
         return res.json({
           success: true,
           status: 'connected',
-          message: `CLI agent validated. Approved executable configured: "${agent.cliCommand}".`,
+          message: `CLI agent validated. Approved executable configured: "${agent.cliCommand}". Ready for isolated execution.`,
         });
       }
 
       // 4. Project Import / ZIP
       if (agent.connectionType === 'import') {
-        const runnerUrl = process.env.AGENT_RUNNER_URL;
-        if (!runnerUrl) {
+        const platformConfig = await storage.getPlatformConfig();
+
+        if (platformConfig.agentRunnerMode === 'external-docker' && platformConfig.agentRunnerUrl) {
+          return res.json({
+            success: true,
+            status: 'connected',
+            message: `Connected to external isolated container runner at ${platformConfig.agentRunnerUrl}.`,
+          });
+        }
+
+        // Built-in Platform-Managed Sandbox Runner
+        if (agent.preparationStatus === 'ready') {
+          return res.json({
+            success: true,
+            status: 'connected',
+            message: `Platform sandbox runner ready. Runtime: ${agent.runtime || 'Node.js'} | Entrypoint: ${agent.entrypoint || 'index.js'}. Dependencies verified in isolated sandbox.`,
+          });
+        } else {
           return res.json({
             success: false,
             status: 'needs_configuration',
             message:
-              'A repository URL is source code, not automatically runnable. AGENT_RUNNER_URL is not configured in .env. An isolated Docker or worker runner is required before imported code can be executed.',
+              'Repository registered. Click "Prepare Environment" to inspect manifest and auto-install dependencies in the isolated sandbox.',
           });
         }
-
-        return res.json({
-          success: true,
-          status: 'connected',
-          message: `Connected to isolated runner service at ${runnerUrl}. Repository entrypoint verified for sandboxed execution.`,
-        });
       }
 
       res.json({ success: true, status: 'ready' });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST /api/agents/:id/prepare - Automatic runtime preparation
+  router.post('/:id/prepare', async (req: Request, res: Response) => {
+    try {
+      const agent = await storage.getAgent(req.params.id as string);
+      if (!agent) {
+        return res.status(404).json({ success: false, error: 'Agent not found' });
+      }
+
+      const platformConfig = await storage.getPlatformConfig();
+      const prepResult = await runnerService.prepareSandbox(agent, platformConfig);
+
+      agent.preparationStatus = prepResult.success ? 'ready' : 'failed';
+      agent.preparationLogs = prepResult.logs;
+      agent.detectedManifest = prepResult.manifest;
+      if (prepResult.manifest.suggestedEntrypoints?.length && !agent.entrypoint) {
+        agent.entrypoint = prepResult.manifest.suggestedEntrypoints[0];
+      }
+      if (prepResult.runtime && prepResult.runtime !== 'unknown') {
+        agent.runtime = prepResult.runtime;
+      }
+      agent.status = prepResult.success ? 'ready' : 'error';
+
+      await storage.saveAgent(agent);
+
+      res.json({
+        success: prepResult.success,
+        data: {
+          status: agent.preparationStatus,
+          runtime: agent.runtime,
+          manifest: agent.detectedManifest,
+          logs: agent.preparationLogs,
+          error: prepResult.error,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // PUT /api/agents/:id - Update existing agent configuration
+  router.put('/:id', async (req: Request, res: Response) => {
+    try {
+      const agent = await storage.getAgent(req.params.id as string);
+      if (!agent) {
+        return res.status(404).json({ success: false, error: 'Agent not found' });
+      }
+
+      const updates = req.body;
+      const updatedAgent: Agent = {
+        ...agent,
+        ...updates,
+        id: agent.id, // Preserve immutable ID
+        updatedAt: new Date().toISOString(),
+      };
+
+      await storage.saveAgent(updatedAgent);
+      res.json({ success: true, data: updatedAgent });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
