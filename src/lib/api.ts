@@ -745,6 +745,150 @@ export const api = {
     if (!res.ok) throw new Error(json.error || 'Failed to get generation jobs');
     return json.jobs;
   },
+
+  // ==========================================
+  // Universal MCP Client & Registry APIs
+  // ==========================================
+  getMcpConnections: async (ownerId?: string): Promise<McpConnectionRecord[]> => {
+    const url = ownerId ? `${API_BASE}/mcp/connections?ownerId=${encodeURIComponent(ownerId)}` : `${API_BASE}/mcp/connections`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch MCP connections');
+    return json.connections;
+  },
+
+  getMcpConnection: async (id: string): Promise<McpConnectionRecord> => {
+    const res = await fetch(`${API_BASE}/mcp/connections/${id}`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch MCP connection details');
+    return json.connection;
+  },
+
+  discoverMcpServer: async (serverUrl: string, transport: McpTransport = 'streamable_http'): Promise<any> => {
+    const res = await fetch(`${API_BASE}/mcp/discover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serverUrl, transport }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'MCP discovery failed');
+    return json;
+  },
+
+  connectMcpServer: async (data: {
+    displayName: string;
+    preset?: string;
+    transport?: McpTransport;
+    serverUrl?: string;
+    localCommand?: string;
+    localArgs?: string[];
+    localEnv?: Record<string, string>;
+    localCwd?: string;
+    authType?: McpAuthType;
+    bearerToken?: string;
+    apiKey?: string;
+    headers?: Record<string, string>;
+  }): Promise<McpConnectionRecord> => {
+    const res = await fetch(`${API_BASE}/mcp/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to connect MCP server');
+    return json.connection;
+  },
+
+  reconnectMcpConnection: async (id: string): Promise<McpConnectionRecord> => {
+    const res = await fetch(`${API_BASE}/mcp/connections/${id}/reconnect`, {
+      method: 'POST',
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to reconnect MCP server');
+    return json.connection;
+  },
+
+  disconnectMcpConnection: async (id: string): Promise<McpConnectionRecord> => {
+    const res = await fetch(`${API_BASE}/mcp/connections/${id}/disconnect`, {
+      method: 'POST',
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to disconnect MCP server');
+    return json.connection;
+  },
+
+  deleteMcpConnection: async (id: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/mcp/connections/${id}`, {
+      method: 'DELETE',
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to delete MCP connection');
+  },
+
+  callMcpTool: async (
+    connectionId: string,
+    toolName: string,
+    args: Record<string, any> = {},
+    approvalConfirmed = false
+  ): Promise<any> => {
+    const res = await fetch(`${API_BASE}/mcp/connections/${connectionId}/tools/call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toolName, arguments: args, approvalConfirmed }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      if (json.requiresApproval) {
+        return { requiresApproval: true, message: json.message };
+      }
+      throw new Error(json.error || 'Failed to invoke MCP tool');
+    }
+    return json.result;
+  },
+
+  getMcpOAuthAuthorizeUrl: async (options: {
+    serverUrl?: string;
+    displayName?: string;
+    preset?: string;
+    clientId?: string;
+    clientSecret?: string;
+  }): Promise<{ authUrl: string; state: string }> => {
+    const params = new URLSearchParams();
+    if (options.serverUrl) params.set('serverUrl', options.serverUrl);
+    if (options.displayName) params.set('displayName', options.displayName);
+    if (options.preset) params.set('preset', options.preset);
+    if (options.clientId) params.set('clientId', options.clientId);
+    if (options.clientSecret) params.set('clientSecret', options.clientSecret);
+
+    const res = await fetch(`${API_BASE}/mcp/oauth/authorize?${params.toString()}`, {
+      headers: { Accept: 'application/json' },
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to initialize OAuth flow');
+    return json;
+  },
+
+  startMcpBenchmark: async (data: {
+    connectionId: string;
+    prompt: string;
+    benchmarkCategory?: string;
+  }): Promise<McpBenchmarkJob> => {
+    const res = await fetch(`${API_BASE}/mcp/benchmark`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to start MCP benchmark');
+    return json.job;
+  },
+
+  getMcpBenchmarkJob: async (jobId: string): Promise<McpBenchmarkJob> => {
+    const res = await fetch(`${API_BASE}/mcp/benchmark/${jobId}`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to get MCP benchmark job');
+    return json.job;
+  },
 };
 
 // ==========================================
@@ -981,5 +1125,107 @@ export interface GenerationJob {
   failureType?: 'quota' | 'auth' | 'generation' | 'retrieval' | 'preparation' | 'testing' | 'other';
   logs: string[];
   createdAt: string;
+  completedAt?: string;
+}
+
+// ==========================================
+// Universal MCP Client & Benchmarking Types
+// ==========================================
+
+export type McpTransport = 'streamable_http' | 'sse' | 'stdio';
+
+export type McpAuthType =
+  | 'none'
+  | 'bearer'
+  | 'api_key'
+  | 'oauth_dcr'
+  | 'oauth_client_credentials';
+
+export type McpConnectionStatus = 'connected' | 'disconnected' | 'error' | 'connecting';
+
+export type McpToolCategory =
+  | 'project_creation'
+  | 'code_generation'
+  | 'code_retrieval'
+  | 'execution'
+  | 'utility';
+
+export interface McpToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, any>;
+  isReadOnly: boolean;
+  requiresApproval: boolean;
+  isBenchmarkCapable: boolean;
+  category: McpToolCategory;
+}
+
+export interface McpResourceDefinition {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface McpConnectionRecord {
+  id: string;
+  ownerId: string;
+  displayName: string;
+  preset?: 'lovable' | 'bolt' | 'replit' | 'emergent' | 'custom';
+  serverUrl?: string;
+  localCommand?: string;
+  localArgs?: string[];
+  localEnv?: Record<string, string>;
+  localCwd?: string;
+  transport: McpTransport;
+  authType: McpAuthType;
+  hasCredentials?: boolean;
+  connectionStatus: McpConnectionStatus;
+  protocolVersion?: string;
+  serverCapabilities?: any;
+  discoveredTools: McpToolDefinition[];
+  discoveredResources: McpResourceDefinition[];
+  lastConnectedAt?: string;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface McpBenchmarkJob {
+  id: string;
+  connectionId: string;
+  ownerId: string;
+  taskPrompt: string;
+  benchmarkCategory: string;
+  status:
+    | 'pending'
+    | 'analyzing_capabilities'
+    | 'submitting_task'
+    | 'monitoring_generation'
+    | 'retrieving_code'
+    | 'preparing_sandbox'
+    | 'evaluating'
+    | 'completed'
+    | 'failed';
+  mappedTools: {
+    creationTool?: string;
+    generationTool?: string;
+    retrievalTool?: string;
+  };
+  supportedCapabilities: {
+    canCreateProject: boolean;
+    canGenerateCode: boolean;
+    canRetrieveCode: boolean;
+    canExecuteTests: boolean;
+  };
+  providerProjectId?: string;
+  retrievedCodeDir?: string;
+  benchmarkRunId?: string;
+  overallScore?: number;
+  failureReason?: string;
+  failureType?: 'auth' | 'quota' | 'unsupported' | 'generation' | 'retrieval' | 'execution' | 'other';
+  logs: string[];
+  createdAt: string;
+  updatedAt: string;
   completedAt?: string;
 }

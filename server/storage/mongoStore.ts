@@ -17,6 +17,7 @@ import type {
   ProviderConnection,
   GenerationJob,
 } from '../types.ts';
+import type { McpConnectionRecord, McpBenchmarkJob } from '../mcp/types.ts';
 import {
   AgentModel,
   WorldModel,
@@ -31,6 +32,8 @@ import {
   BenchmarkRunModel,
   ProviderConnectionModel,
   GenerationJobModel,
+  McpConnectionModel,
+  McpBenchmarkJobModel,
 } from '../models/index.ts';
 import { defaultShopSphereWorld, defaultScenarios, defaultSampleAgent, defaultDeepSeekAgent } from './seedData.ts';
 
@@ -675,6 +678,70 @@ export class MongoStore implements IStorageStore {
     return this.mapGenerationJob(updated);
   }
 
+  // ==========================================
+  // Universal MCP Registry & Connections
+  // ==========================================
+  public async getMcpConnections(ownerId?: string): Promise<McpConnectionRecord[]> {
+    this.assertConnected();
+    const query = ownerId ? { ownerId } : {};
+    const docs = await McpConnectionModel.find(query).sort({ updatedAt: -1 }).lean();
+    return docs.map((d: any) => this.mapMcpConnection(d));
+  }
+
+  public async getMcpConnection(id: string, ownerId?: string): Promise<McpConnectionRecord | null> {
+    this.assertConnected();
+    const query: any = { id };
+    if (ownerId) query.ownerId = ownerId;
+    const doc = await McpConnectionModel.findOne(query).lean();
+    return doc ? this.mapMcpConnection(doc) : null;
+  }
+
+  public async saveMcpConnection(conn: McpConnectionRecord): Promise<McpConnectionRecord> {
+    this.assertConnected();
+    const updated = await McpConnectionModel.findOneAndUpdate(
+      { id: conn.id },
+      { $set: { ...conn, updatedAt: new Date().toISOString() } },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    ).lean();
+    return this.mapMcpConnection(updated);
+  }
+
+  public async deleteMcpConnection(id: string, ownerId?: string): Promise<boolean> {
+    this.assertConnected();
+    const query: any = { id };
+    if (ownerId) query.ownerId = ownerId;
+    const res = await McpConnectionModel.deleteOne(query);
+    return res.deletedCount > 0;
+  }
+
+  // ==========================================
+  // MCP Benchmark Jobs
+  // ==========================================
+  public async getMcpBenchmarkJobs(ownerId?: string): Promise<McpBenchmarkJob[]> {
+    this.assertConnected();
+    const query = ownerId ? { ownerId } : {};
+    const docs = await McpBenchmarkJobModel.find(query).sort({ createdAt: -1 }).lean();
+    return docs.map((d: any) => this.mapMcpBenchmarkJob(d));
+  }
+
+  public async getMcpBenchmarkJob(id: string, ownerId?: string): Promise<McpBenchmarkJob | null> {
+    this.assertConnected();
+    const query: any = { id };
+    if (ownerId) query.ownerId = ownerId;
+    const doc = await McpBenchmarkJobModel.findOne(query).lean();
+    return doc ? this.mapMcpBenchmarkJob(doc) : null;
+  }
+
+  public async saveMcpBenchmarkJob(job: McpBenchmarkJob): Promise<McpBenchmarkJob> {
+    this.assertConnected();
+    const updated = await McpBenchmarkJobModel.findOneAndUpdate(
+      { id: job.id },
+      { $set: { ...job, updatedAt: new Date().toISOString() } },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    ).lean();
+    return this.mapMcpBenchmarkJob(updated);
+  }
+
   // --- Mapping Helpers ---
   private mapAgent(raw: any): Agent {
     return {
@@ -945,6 +1012,61 @@ export class MongoStore implements IStorageStore {
       resultProjectId: raw.resultProjectId,
       logs: raw.logs || [],
       createdAt: raw.createdAt ? new Date(raw.createdAt).toISOString() : new Date().toISOString(),
+      completedAt: raw.completedAt ? new Date(raw.completedAt).toISOString() : undefined,
+    };
+  }
+
+  private mapMcpConnection(raw: any): McpConnectionRecord {
+    return {
+      id: raw.id,
+      ownerId: raw.ownerId || 'default-owner',
+      displayName: raw.displayName,
+      preset: raw.preset,
+      serverUrl: raw.serverUrl,
+      localCommand: raw.localCommand,
+      localArgs: raw.localArgs || [],
+      localEnv: raw.localEnv || {},
+      localCwd: raw.localCwd,
+      transport: raw.transport || 'streamable_http',
+      authType: raw.authType || 'none',
+      encryptedCredentials: raw.encryptedCredentials,
+      headers: raw.headers || {},
+      connectionStatus: raw.connectionStatus || 'disconnected',
+      protocolVersion: raw.protocolVersion,
+      serverCapabilities: raw.serverCapabilities || {},
+      discoveredTools: raw.discoveredTools || [],
+      discoveredResources: raw.discoveredResources || [],
+      lastConnectedAt: raw.lastConnectedAt,
+      lastError: raw.lastError,
+      createdAt: raw.createdAt ? new Date(raw.createdAt).toISOString() : new Date().toISOString(),
+      updatedAt: raw.updatedAt ? new Date(raw.updatedAt).toISOString() : new Date().toISOString(),
+    };
+  }
+
+  private mapMcpBenchmarkJob(raw: any): McpBenchmarkJob {
+    return {
+      id: raw.id,
+      connectionId: raw.connectionId,
+      ownerId: raw.ownerId || 'default-owner',
+      taskPrompt: raw.taskPrompt,
+      benchmarkCategory: raw.benchmarkCategory || 'auto',
+      status: raw.status || 'pending',
+      mappedTools: raw.mappedTools || {},
+      supportedCapabilities: raw.supportedCapabilities || {
+        canCreateProject: false,
+        canGenerateCode: false,
+        canRetrieveCode: false,
+        canExecuteTests: false,
+      },
+      providerProjectId: raw.providerProjectId,
+      retrievedCodeDir: raw.retrievedCodeDir,
+      benchmarkRunId: raw.benchmarkRunId,
+      overallScore: raw.overallScore,
+      failureReason: raw.failureReason,
+      failureType: raw.failureType,
+      logs: raw.logs || [],
+      createdAt: raw.createdAt ? new Date(raw.createdAt).toISOString() : new Date().toISOString(),
+      updatedAt: raw.updatedAt ? new Date(raw.updatedAt).toISOString() : new Date().toISOString(),
       completedAt: raw.completedAt ? new Date(raw.completedAt).toISOString() : undefined,
     };
   }

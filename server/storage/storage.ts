@@ -14,6 +14,7 @@ import type {
   ProviderConnection,
   GenerationJob,
 } from '../types.ts';
+import type { McpConnectionRecord, McpBenchmarkJob } from '../mcp/types.ts';
 
 export class DatabaseNotConfiguredError extends Error {
   constructor(message = 'MongoDB is not configured or reachable. Please set MONGODB_URI in your environment.') {
@@ -95,6 +96,17 @@ export interface IStorageStore {
   getGenerationJobs(): Promise<GenerationJob[]>;
   getGenerationJob(id: string): Promise<GenerationJob | null>;
   saveGenerationJob(job: GenerationJob): Promise<GenerationJob>;
+
+  // Universal MCP Registry & Connections
+  getMcpConnections(ownerId?: string): Promise<McpConnectionRecord[]>;
+  getMcpConnection(id: string, ownerId?: string): Promise<McpConnectionRecord | null>;
+  saveMcpConnection(conn: McpConnectionRecord): Promise<McpConnectionRecord>;
+  deleteMcpConnection(id: string, ownerId?: string): Promise<boolean>;
+
+  // MCP Benchmarking Jobs
+  getMcpBenchmarkJob(id: string, ownerId?: string): Promise<McpBenchmarkJob | null>;
+  saveMcpBenchmarkJob(job: McpBenchmarkJob): Promise<McpBenchmarkJob>;
+  getMcpBenchmarkJobs(ownerId?: string): Promise<McpBenchmarkJob[]>;
 
   // Seed check
   seedDefaultDataIfNeeded(): Promise<void>;

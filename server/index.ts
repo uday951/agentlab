@@ -14,6 +14,7 @@ import { createExperimentRouter } from './routes/experimentRoutes.ts';
 import { createDemoRouter } from './routes/demoRoutes.ts';
 import { createInfrastructureRouter } from './routes/infrastructureRoutes.ts';
 import { createBenchmarkRouter } from './routes/benchmarkRoutes.ts';
+import { createMcpRouter } from './routes/mcpRoutes.ts';
 
 dotenv.config();
 
@@ -93,6 +94,7 @@ async function startServer() {
   app.use('/api/demo', createDemoRouter(storage, engine));
   app.use('/api/infrastructure', createInfrastructureRouter(storage));
   app.use('/api/benchmark', createBenchmarkRouter(storage));
+  app.use('/api/mcp', createMcpRouter(storage));
 
   // Centralized Error Handling Middleware
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

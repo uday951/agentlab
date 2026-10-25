@@ -11,3 +11,5 @@ export { BenchmarkDefinitionModel, type IBenchmarkDefinitionDocument } from './B
 export { BenchmarkRunModel, type IBenchmarkRunDocument } from './BenchmarkRun.ts';
 export { ProviderConnectionModel, type IProviderConnectionDocument } from './ProviderConnection.ts';
 export { GenerationJobModel, type IGenerationJobDocument } from './GenerationJob.ts';
+export { McpConnectionModel, type IMcpConnectionDocument } from './McpConnection.ts';
+export { McpBenchmarkJobModel, type IMcpBenchmarkJobDocument } from './McpBenchmarkJob.ts';
