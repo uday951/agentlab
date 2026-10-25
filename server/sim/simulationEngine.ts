@@ -14,6 +14,7 @@ import { SampleSupportAgent } from './adapters/SampleSupportAgent.ts';
 import { ApiAgentAdapter } from './adapters/ApiAgentAdapter.ts';
 import { CliAgentAdapter } from './adapters/CliAgentAdapter.ts';
 import { ProjectImportAdapter } from './adapters/ProjectImportAdapter.ts';
+import { DeepSeekAgentAdapter } from './adapters/DeepSeekAgentAdapter.ts';
 import type { IStorageStore } from '../storage/storage.ts';
 
 export type EventSubscriber = (event: { type: string; data: any }) => void;
@@ -93,22 +94,36 @@ export class SimulationEngine {
       scenarioCount: scenariosToRun.length,
     });
 
-    // Select adapter based on agent connection type
+    // Select adapter based on agent connection type and configuration
     let adapter: AgentAdapter;
-    switch (agent.connectionType) {
-      case 'api':
-        adapter = new ApiAgentAdapter();
-        break;
-      case 'cli':
-        adapter = new CliAgentAdapter();
-        break;
-      case 'import':
-        adapter = new ProjectImportAdapter();
-        break;
-      case 'builtin':
-      default:
-        adapter = new SampleSupportAgent();
-        break;
+    const isDeepSeek =
+      (agent.connectionType as any) === 'deepseek' ||
+      agent.id.includes('deepseek') ||
+      agent.endpoint?.includes('deepseek') ||
+      agent.model?.toLowerCase().includes('deepseek');
+
+    if (isDeepSeek && (process.env.LLM_API_KEY || agent.authHeader)) {
+      adapter = new DeepSeekAgentAdapter(
+        agent.authHeader || process.env.LLM_API_KEY,
+        agent.endpoint,
+        agent.model
+      );
+    } else {
+      switch (agent.connectionType) {
+        case 'api':
+          adapter = new ApiAgentAdapter();
+          break;
+        case 'cli':
+          adapter = new CliAgentAdapter();
+          break;
+        case 'import':
+          adapter = new ProjectImportAdapter();
+          break;
+        case 'builtin':
+        default:
+          adapter = new SampleSupportAgent();
+          break;
+      }
     }
 
     // Initialize environment tools & RAG pipeline

@@ -4,6 +4,7 @@ import { SampleSupportAgent } from '../server/sim/adapters/SampleSupportAgent.ts
 import { ApiAgentAdapter } from '../server/sim/adapters/ApiAgentAdapter.ts';
 import { CliAgentAdapter } from '../server/sim/adapters/CliAgentAdapter.ts';
 import { ProjectImportAdapter } from '../server/sim/adapters/ProjectImportAdapter.ts';
+import { DeepSeekAgentAdapter } from '../server/sim/adapters/DeepSeekAgentAdapter.ts';
 import { ShopSphereToolRegistry } from '../server/sim/tools.ts';
 import { LocalRAGPipeline } from '../server/sim/rag.ts';
 import { defaultShopSphereWorld, defaultScenarios, defaultSampleAgent } from '../server/storage/seedData.ts';
@@ -143,4 +144,59 @@ test('ProjectImportAdapter: reports configuration required when AGENT_RUNNER_URL
   assert.equal(result.status, 'error');
   assert.equal(result.evaluation.failureCategory, 'Isolated Runner Not Configured');
   assert.match(result.agentOutput.message, /AGENT_RUNNER_URL/);
+});
+
+test('DeepSeekAgentAdapter: blocks adversarial prompt injection under Policy #05', async () => {
+  const adapter = new DeepSeekAgentAdapter('fake-key');
+  const tools = new ShopSphereToolRegistry(defaultShopSphereWorld.initialData.orders);
+  const rag = new LocalRAGPipeline(defaultShopSphereWorld.knowledgeDocuments);
+  const adversarialScenario = defaultScenarios.find((s) => s.id === 'sc-09')!;
+
+  const events: any[] = [];
+  const emitEvent = (e: any) => {
+    events.push(e);
+    return e;
+  };
+
+  const result = await adapter.executeScenario({
+    agent: { ...defaultSampleAgent, connectionType: 'api' },
+    world: defaultShopSphereWorld,
+    scenario: adversarialScenario,
+    experimentId: 'test-exp-adv',
+    tools,
+    rag,
+    stepCounter: 0,
+    emitEvent,
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.agentOutput.decision, 'reject_refund');
+  assert.equal(result.agentOutput.policyRefCited, 'Policy #05');
+  assert.equal(result.evaluation.policyCompliant, true);
+});
+
+test('DeepSeekAgentAdapter: reports configuration error when API key is missing', async () => {
+  const adapter = new DeepSeekAgentAdapter('');
+  const tools = new ShopSphereToolRegistry();
+  const rag = new LocalRAGPipeline();
+
+  const events: any[] = [];
+  const emitEvent = (e: any) => {
+    events.push(e);
+    return e;
+  };
+
+  const result = await adapter.executeScenario({
+    agent: { ...defaultSampleAgent, connectionType: 'api' },
+    world: defaultShopSphereWorld,
+    scenario: defaultScenarios[0],
+    experimentId: 'test-exp-nokey',
+    tools,
+    rag,
+    stepCounter: 0,
+    emitEvent,
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.match(result.agentOutput.message, /DeepSeek API key is missing/);
 });

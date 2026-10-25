@@ -78,15 +78,19 @@ export class LocalRAGPipeline implements IKnowledgeRetriever {
   /**
    * Retrieves top-k matching passages for a query using lexical relevance scoring.
    */
-  public async retrieve(query: string, options: { topK?: number; worldId?: string } = {}): Promise<RetrievedPassage[]> {
-    const topK = options.topK || 3;
+  public async retrieve(
+    query: string,
+    options: { topK?: number; worldId?: string } | number = {}
+  ): Promise<RetrievedPassage[]> {
+    const opts = typeof options === 'number' ? { topK: options } : options;
+    const topK = opts.topK || 3;
     const queryTokens = this.tokenize(query);
     if (queryTokens.length === 0) return [];
 
     const allPassages: RetrievedPassage[] = [];
 
     for (const doc of this.documents) {
-      if (options.worldId && (doc as any).worldId && (doc as any).worldId !== options.worldId) {
+      if (opts.worldId && (doc as any).worldId && (doc as any).worldId !== opts.worldId) {
         continue;
       }
 

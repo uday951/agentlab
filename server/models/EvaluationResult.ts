@@ -30,7 +30,7 @@ export interface IEvaluationResultDocument extends Document {
 
 export const EvaluationResultSchema = new Schema<IEvaluationResultDocument>(
   {
-    experimentId: { type: String, required: true, unique: true, index: true },
+    experimentId: { type: String, required: true },
     totalScenarios: { type: Number, required: true },
     passedScenarios: { type: Number, required: true },
     failedScenarios: { type: Number, required: true },

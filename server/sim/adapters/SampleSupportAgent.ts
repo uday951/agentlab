@@ -26,7 +26,7 @@ export class SampleSupportAgent implements AgentAdapter {
     });
 
     // Step 2: RAG Knowledge Retrieval
-    const retrievedPassages = rag.retrieve(scenario.inputTask, 2);
+    const retrievedPassages = await rag.retrieve(scenario.inputTask, 2);
     const topPassage = retrievedPassages[0];
     trackEvent({
       actionType: 'rag_retrieval',

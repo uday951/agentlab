@@ -10,7 +10,7 @@ import {
   ExecutionEventModel,
   EvaluationResultModel,
 } from '../models/index.ts';
-import { defaultShopSphereWorld, defaultScenarios, defaultSampleAgent } from './seedData.ts';
+import { defaultShopSphereWorld, defaultScenarios, defaultSampleAgent, defaultDeepSeekAgent } from './seedData.ts';
 
 export class MongoStore implements IStorageStore {
   public readonly mode = 'mongodb' as const;
@@ -274,11 +274,19 @@ export class MongoStore implements IStorageStore {
         }
       }
 
-      // 3. Check & Seed Default Sample Agent
+      // 3. Check & Seed Default Agents (Deterministic & DeepSeek)
       const existingAgents = await AgentModel.countDocuments();
       if (existingAgents === 0) {
-        console.log('🌱 [MongoDB Seed] Seeding SampleSupportAgent into MongoDB...');
+        console.log('🌱 [MongoDB Seed] Seeding default agents into MongoDB...');
         await AgentModel.create(defaultSampleAgent);
+        await AgentModel.create(defaultDeepSeekAgent);
+      } else {
+        // Ensure DeepSeek agent exists
+        const deepSeekExists = await AgentModel.findOne({ id: defaultDeepSeekAgent.id });
+        if (!deepSeekExists) {
+          console.log('🌱 [MongoDB Seed] Seeding DeepSeek live agent into MongoDB...');
+          await AgentModel.create(defaultDeepSeekAgent);
+        }
       }
     } catch (seedErr: any) {
       console.error('⚠️ [MongoDB Seed] Error checking/seeding default records:', seedErr.message);

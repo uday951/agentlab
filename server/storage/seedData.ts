@@ -14,6 +14,23 @@ export const SEED_AGENT: Agent = {
   updatedAt: '2026-09-26T12:00:00.000Z',
 };
 
+export const SEED_DEEPSEEK_AGENT: Agent = {
+  id: 'agent-deepseek-support',
+  name: 'DeepSeek LLM Agent (Live)',
+  description: 'Production LLM agent powered by DeepSeek Chat. Performs live reasoning, tool calling, and RAG policy citation.',
+  connectionType: 'api',
+  model: 'deepseek-chat',
+  endpoint: 'https://api.deepseek.com/chat/completions',
+  authType: 'bearer',
+  authHeader: process.env.LLM_API_KEY || 'sk-e6254d522625440dbd4f88f968ba5cd8',
+  capabilities: ['rag_retrieval', 'simulated_tools', 'live_llm_reasoning', 'failure_recovery'],
+  tools: ['lookup_order', 'retrieve_policy', 'check_refund_eligibility', 'process_refund', 'escalate_to_manager'],
+  timeoutMs: 15000,
+  status: 'ready',
+  createdAt: '2026-09-20T10:00:00.000Z',
+  updatedAt: new Date().toISOString(),
+};
+
 export const SEED_WORLD: World = {
   id: 'world-shopsphere',
   name: 'ShopSphere E-commerce',
@@ -442,6 +459,7 @@ export const SEED_SCENARIOS: Scenario[] = [
 ];
 
 export const defaultSampleAgent = SEED_AGENT;
+export const defaultDeepSeekAgent = SEED_DEEPSEEK_AGENT;
 export const defaultShopSphereWorld = SEED_WORLD;
 export const defaultScenarios = SEED_SCENARIOS;
 
