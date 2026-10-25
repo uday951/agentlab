@@ -1,4 +1,4 @@
-import express, { type Request, type Response } from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 const { Router } = express;
 import { z } from 'zod';
 import type { IStorageStore } from '../storage/storage.ts';
@@ -19,7 +19,9 @@ const WorldSchema = z.object({
 const ScenarioSchema = z.object({
   title: z.string().min(2),
   description: z.string().default(''),
-  category: z.enum(['normal', 'edge_case', 'adversarial', 'tool_failure', 'policy_conflict', 'escalation']).default('normal'),
+  category: z
+    .enum(['normal', 'edge_case', 'adversarial', 'tool_failure', 'policy_conflict', 'escalation'])
+    .default('normal'),
   customerProfile: z.any(),
   inputTask: z.string().min(2),
   orderContext: z.any().optional(),
@@ -36,30 +38,30 @@ export function createWorldRouter(storage: IStorageStore): Router {
   const router = Router();
 
   // GET /api/worlds
-  router.get('/', async (_req: Request, res: Response) => {
+  router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const worlds = await storage.getWorlds();
       res.json({ success: true, data: worlds });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
+      next(err);
     }
   });
 
   // GET /api/worlds/:id
-  router.get('/:id', async (req: Request, res: Response) => {
+  router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const world = await storage.getWorld(req.params.id);
+      const world = await storage.getWorld(req.params.id as string);
       if (!world) {
         return res.status(404).json({ success: false, error: 'World not found' });
       }
       res.json({ success: true, data: world });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
+      next(err);
     }
   });
 
   // POST /api/worlds
-  router.post('/', async (req: Request, res: Response) => {
+  router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const validated = WorldSchema.parse(req.body);
       const newWorld: World = {
@@ -73,62 +75,56 @@ export function createWorldRouter(storage: IStorageStore): Router {
       await storage.saveWorld(newWorld);
       res.status(201).json({ success: true, data: newWorld });
     } catch (err: any) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ success: false, error: 'Validation failed', details: err.errors });
-      }
-      res.status(500).json({ success: false, error: err.message });
+      next(err);
     }
   });
 
   // PUT /api/worlds/:id
-  router.put('/:id', async (req: Request, res: Response) => {
+  router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const existing = await storage.getWorld(req.params.id);
+      const existing = await storage.getWorld(req.params.id as string);
       if (!existing) {
         return res.status(404).json({ success: false, error: 'World not found' });
       }
 
-      const updatedWorld: World = {
+      const validated = WorldSchema.parse(req.body);
+      const updated: World = {
         ...existing,
-        ...req.body,
-        id: existing.id,
+        ...validated,
         updatedAt: new Date().toISOString(),
       };
 
-      await storage.saveWorld(updatedWorld);
-      res.json({ success: true, data: updatedWorld });
+      await storage.saveWorld(updated);
+      res.json({ success: true, data: updated });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
+      next(err);
     }
   });
 
   // GET /api/worlds/:id/scenarios
-  router.get('/:id/scenarios', async (req: Request, res: Response) => {
+  router.get('/:id/scenarios', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const scenarios = await storage.getScenariosForWorld(req.params.id);
+      const scenarios = await storage.getScenariosForWorld(req.params.id as string);
       res.json({ success: true, data: scenarios });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
+      next(err);
     }
   });
 
   // POST /api/worlds/:id/scenarios
-  router.post('/:id/scenarios', async (req: Request, res: Response) => {
+  router.post('/:id/scenarios', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const validated = ScenarioSchema.parse(req.body);
       const newScenario: Scenario = {
         id: `sc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        worldId: req.params.id,
+        worldId: req.params.id as string,
         ...validated,
       };
 
       await storage.saveScenario(newScenario);
       res.status(201).json({ success: true, data: newScenario });
     } catch (err: any) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ success: false, error: 'Validation failed', details: err.errors });
-      }
-      res.status(500).json({ success: false, error: err.message });
+      next(err);
     }
   });
 

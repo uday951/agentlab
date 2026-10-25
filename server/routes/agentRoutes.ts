@@ -1,4 +1,4 @@
-import express, { type Request, type Response } from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 const { Router } = express;
 import { z } from 'zod';
 import type { IStorageStore } from '../storage/storage.ts';
@@ -28,17 +28,17 @@ export function createAgentRouter(storage: IStorageStore): Router {
   const router = Router();
 
   // GET /api/agents
-  router.get('/', async (_req: Request, res: Response) => {
+  router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const agents = await storage.getAgents();
       res.json({ success: true, data: agents });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
+      next(err);
     }
   });
 
   // GET /api/agents/:id
-  router.get('/:id', async (req: Request, res: Response) => {
+  router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const agent = await storage.getAgent(req.params.id as string);
       if (!agent) {
@@ -46,12 +46,12 @@ export function createAgentRouter(storage: IStorageStore): Router {
       }
       res.json({ success: true, data: agent });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
+      next(err);
     }
   });
 
   // POST /api/agents
-  router.post('/', async (req: Request, res: Response) => {
+  router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const validated = AgentSchema.parse(req.body);
       const isBuiltin = validated.connectionType === 'builtin';
@@ -71,15 +71,12 @@ export function createAgentRouter(storage: IStorageStore): Router {
       await storage.saveAgent(newAgent);
       res.status(201).json({ success: true, data: newAgent });
     } catch (err: any) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ success: false, error: 'Validation failed', details: err.errors });
-      }
-      res.status(500).json({ success: false, error: err.message });
+      next(err);
     }
   });
 
   // DELETE /api/agents/:id
-  router.delete('/:id', async (req: Request, res: Response) => {
+  router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const deleted = await storage.deleteAgent(req.params.id as string);
       if (!deleted) {
@@ -87,7 +84,7 @@ export function createAgentRouter(storage: IStorageStore): Router {
       }
       res.json({ success: true, message: 'Agent deleted successfully' });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
+      next(err);
     }
   });
 

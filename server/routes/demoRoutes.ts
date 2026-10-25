@@ -1,4 +1,4 @@
-import express, { type Request, type Response } from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 const { Router } = express;
 import type { IStorageStore } from '../storage/storage.ts';
 import { SimulationEngine } from '../sim/simulationEngine.ts';
@@ -8,13 +8,13 @@ export function createDemoRouter(storage: IStorageStore, engine: SimulationEngin
   const router = Router();
 
   // POST /api/demo/run-quick - 1-Click College Review Demo
-  router.post('/run-quick', async (_req: Request, res: Response) => {
+  router.post('/run-quick', async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const agents = await storage.getAgents();
-      const sampleAgent = agents.find(a => a.id === 'agent-sample-support') || agents[0];
+      const sampleAgent = agents.find((a) => a.id === 'agent-sample-support') || agents[0];
 
       const worlds = await storage.getWorlds();
-      const shopSphere = worlds.find(w => w.id === 'world-shopsphere') || worlds[0];
+      const shopSphere = worlds.find((w) => w.id === 'world-shopsphere') || worlds[0];
 
       if (!sampleAgent || !shopSphere) {
         return res.status(400).json({
@@ -24,7 +24,7 @@ export function createDemoRouter(storage: IStorageStore, engine: SimulationEngin
       }
 
       const scenarios = await storage.getScenariosForWorld(shopSphere.id);
-      const scenarioIds = scenarios.map(s => s.id);
+      const scenarioIds = scenarios.map((s) => s.id);
 
       const demoExp: Experiment = {
         id: `exp-demo-${Date.now()}`,
@@ -45,7 +45,7 @@ export function createDemoRouter(storage: IStorageStore, engine: SimulationEngin
       await storage.saveExperiment(demoExp);
 
       // Start simulation in background
-      engine.runExperiment(demoExp.id).catch(err => {
+      engine.runExperiment(demoExp.id).catch((err) => {
         console.error('Demo simulation error:', err);
       });
 
@@ -55,7 +55,7 @@ export function createDemoRouter(storage: IStorageStore, engine: SimulationEngin
         experiment: demoExp,
       });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
+      next(err);
     }
   });
 
