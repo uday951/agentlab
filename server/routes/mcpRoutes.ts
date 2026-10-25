@@ -11,6 +11,7 @@ import { validateSafeMcpUrl, SsrfError } from '../mcp/ssrfValidator.ts';
 import { McpAuthManager } from '../mcp/McpAuthManager.ts';
 import { UniversalMcpClient } from '../mcp/UniversalMcpClient.ts';
 import { McpBenchmarkOrchestrator } from '../mcp/McpBenchmarkOrchestrator.ts';
+import { LovableMcpClient } from '../providers/LovableMcpClient.ts';
 
 // In-memory PKCE state session cache (state -> oauth context)
 const pkceSessionStore = new Map<
