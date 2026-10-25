@@ -30,6 +30,10 @@ class MockStorage implements Partial<IStorageStore> {
     this.providerConnections.delete(provider);
   }
 
+  public async getMcpConnections(): Promise<any[]> {
+    return [];
+  }
+
   public async getGenerationJob(id: string): Promise<GenerationJob | null> {
     return this.generationJobs.get(id) || null;
   }

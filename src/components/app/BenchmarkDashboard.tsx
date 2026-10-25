@@ -146,6 +146,9 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
       setRuns(runsRes);
       setProviders(provList);
       setMcpConnections(mcpList);
+      if (mcpList.length > 0 && !selectedBenchmarkMcpId) {
+        setSelectedBenchmarkMcpId(mcpList[0].id);
+      }
       if (mcpList.length > 0 && !selectedMcpConn) {
         setSelectedMcpConn(mcpList[0]);
         if (mcpList[0].discoveredTools.length > 0) {
@@ -169,30 +172,41 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
     const connectedParam = params.get('connected');
     const errorParam = params.get('error');
 
+    const cleanUrl = new URL(window.location.href);
+    let shouldClean = false;
+
     if (mcpConnectedParam) {
       setProviderNotice({
         type: 'success',
         text: `Successfully authenticated & verified MCP server connection!`,
       });
-      window.history.replaceState({}, document.title, window.location.pathname);
+      cleanUrl.searchParams.delete('mcp_connected');
+      shouldClean = true;
     } else if (mcpErrorParam) {
       setProviderNotice({
         type: 'error',
         text: `MCP Authorization Error: ${decodeURIComponent(mcpErrorParam)}`,
       });
-      window.history.replaceState({}, document.title, window.location.pathname);
+      cleanUrl.searchParams.delete('mcp_error');
+      shouldClean = true;
     } else if (connectedParam) {
       setProviderNotice({
         type: 'success',
         text: `Successfully authenticated & connected to ${connectedParam.toUpperCase()} via official OAuth!`,
       });
-      window.history.replaceState({}, document.title, window.location.pathname);
+      cleanUrl.searchParams.delete('connected');
+      shouldClean = true;
     } else if (errorParam) {
       setProviderNotice({
         type: 'error',
         text: `OAuth authorization failed: ${decodeURIComponent(errorParam)}`,
       });
-      window.history.replaceState({}, document.title, window.location.pathname);
+      cleanUrl.searchParams.delete('error');
+      shouldClean = true;
+    }
+
+    if (shouldClean) {
+      window.history.replaceState({}, document.title, cleanUrl.toString());
     }
   }, []);
 
@@ -271,12 +285,14 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
     try {
       // If OAuth is selected, start standards-compliant OAuth flow with PKCE
       if (connAuthType === 'oauth_dcr' || connAuthType === 'oauth_client_credentials') {
+        const returnUrl = `${window.location.origin}/app?tab=benchmarks`;
         const { authUrl } = await api.getMcpOAuthAuthorizeUrl({
           serverUrl: connServerUrl.trim(),
           displayName: connDisplayName.trim() || 'MCP Server',
           preset: connPreset,
           clientId: connClientId.trim() || undefined,
           clientSecret: connClientSecret.trim() || undefined,
+          returnUrl,
         });
 
         if (authUrl) {
@@ -382,7 +398,8 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
   };
 
   const handleStartMcpBenchmark = async () => {
-    if (!selectedBenchmarkMcpId) {
+    const targetId = selectedBenchmarkMcpId || mcpConnections[0]?.id;
+    if (!targetId) {
       setMcpBenchError('Please select a connected MCP server.');
       return;
     }
@@ -395,7 +412,7 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
     setMcpBenchError(null);
     try {
       const job = await api.startMcpBenchmark({
-        connectionId: selectedBenchmarkMcpId,
+        connectionId: targetId,
         prompt: mcpBenchmarkPrompt.trim(),
         benchmarkCategory: mcpBenchmarkCategory,
       });
@@ -442,10 +459,12 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
 
   const handleConnectOAuth = async (_provider?: string) => {
     try {
+      const returnUrl = `${window.location.origin}/app?tab=benchmarks`;
       const { authUrl } = await api.getMcpOAuthAuthorizeUrl({
         serverUrl: 'https://mcp.lovable.dev',
         displayName: 'Lovable Platform',
         preset: 'lovable',
+        returnUrl,
       });
       if (authUrl) {
         window.location.href = authUrl;
@@ -747,7 +766,14 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
               {/* Lovable Card */}
               {(() => {
                 const prov = providers.find((p) => p.provider === 'lovable');
-                const isConnected = prov?.status === 'connected';
+                const mcpProv = mcpConnections.find(
+                  (c) => (c.preset === 'lovable' || c.serverUrl?.includes('lovable.dev')) && c.connectionStatus === 'connected'
+                );
+                const isConnected = prov?.status === 'connected' || !!mcpProv;
+                const toolCount = (prov?.discoveredTools && prov.discoveredTools.length > 0)
+                  ? prov.discoveredTools.length
+                  : (mcpProv?.discoveredTools?.length || 0);
+
                 return (
                   <div className="border border-pink-200 bg-pink-50/50 rounded p-3 flex flex-col justify-between space-y-2">
                     <div>
@@ -773,10 +799,10 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
                       <p className="text-[11px] text-burgundy/70 mt-1 line-clamp-2">
                         Official OAuth & MCP JSON-RPC protocol. Generates code directly into AgentLab sandboxes.
                       </p>
-                      {prov?.discoveredTools && prov.discoveredTools.length > 0 && (
+                      {toolCount > 0 && (
                         <div className="mt-2 text-[10px] font-mono text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-1.5 flex items-center gap-1">
                           <Check size={11} className="text-emerald-700 flex-shrink-0" />
-                          <span>{prov.discoveredTools.length} MCP tools discovered</span>
+                          <span>{toolCount} MCP tools discovered</span>
                         </div>
                       )}
                     </div>
@@ -784,7 +810,9 @@ export function BenchmarkDashboard({ onNavigateToCompare }: { onNavigateToCompar
                       {isConnected ? (
                         <button
                           onClick={() => {
-                            const lovableMcp = mcpConnections.find((c) => c.preset === 'lovable');
+                            const lovableMcp = mcpConnections.find(
+                              (c) => (c.preset === 'lovable' || c.serverUrl?.includes('lovable.dev')) && c.connectionStatus === 'connected'
+                            );
                             if (lovableMcp) setSelectedBenchmarkMcpId(lovableMcp.id);
                             setStartModalMode('generate');
                             setShowStartModal(true);

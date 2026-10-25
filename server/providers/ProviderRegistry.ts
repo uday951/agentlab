@@ -23,15 +23,28 @@ export class ProviderRegistry {
     const lovableClient = new LovableMcpClient(lovableStored?.accessToken);
     const discoveredTools = await lovableClient.discoverTools();
 
+    // Check if connected via Universal MCP engine
+    const mcpConns = typeof this.storage.getMcpConnections === 'function'
+      ? await this.storage.getMcpConnections().catch(() => [])
+      : [];
+    const lovableMcp = mcpConns.find(
+      (c) => (c.preset === 'lovable' || c.serverUrl?.includes('lovable.dev')) && c.connectionStatus === 'connected'
+    );
+    const isLovableConnected = lovableStored?.status === 'connected' || !!lovableMcp;
+
+    const combinedTools = (lovableStored?.discoveredTools && lovableStored.discoveredTools.length > 0)
+      ? lovableStored.discoveredTools
+      : (lovableMcp?.discoveredTools?.map((t) => ({ name: t.name, description: t.description || '' })) || discoveredTools);
+
     const lovableConn: ProviderConnection = {
       provider: 'lovable',
       name: 'Lovable',
-      status: lovableStored?.status || 'disconnected',
+      status: isLovableConnected ? 'connected' : 'disconnected',
       authType: 'oauth',
       accountEmail: lovableStored?.accountEmail,
       accountName: lovableStored?.accountName,
       workspaceId: lovableStored?.workspaceId,
-      workspaceName: lovableStored?.workspaceName,
+      workspaceName: lovableStored?.workspaceName || (lovableMcp ? lovableMcp.displayName : undefined),
       accessToken: lovableStored?.accessToken,
       refreshToken: lovableStored?.refreshToken,
       serverUrl: LovableMcpClient.SERVER_URL,
@@ -42,14 +55,14 @@ export class ProviderRegistry {
         'GitHub Export Synchronization',
         'Unified Diff & Code Inspection',
       ],
-      discoveredTools,
+      discoveredTools: combinedTools,
       directPromptGeneration: true,
       githubExportSupported: true,
       zipImportSupported: true,
       guidanceNotes:
         'Connect your official Lovable account using OAuth. AgentLab will submit your approved benchmark prompt directly to the Lovable MCP server to scaffold, generate, and benchmark the app.',
       lastCheckedAt: new Date().toISOString(),
-      updatedAt: lovableStored?.updatedAt || new Date().toISOString(),
+      updatedAt: lovableStored?.updatedAt || (lovableMcp ? lovableMcp.updatedAt : new Date().toISOString()),
     };
 
     const boltConn = BoltProviderAdapter.getConnectionMetadata(storedMap.get('bolt'));

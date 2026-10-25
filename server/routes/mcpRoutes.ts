@@ -25,9 +25,45 @@ const pkceSessionStore = new Map<
     displayName: string;
     preset?: any;
     ownerId: string;
+    returnUrl?: string;
     createdAt: number;
   }
 >();
+
+function sanitizeReturnUrl(rawUrl?: string): string {
+  if (!rawUrl || !rawUrl.trim()) return '/app?tab=benchmarks';
+  try {
+    const isAbsolute = rawUrl.startsWith('http://') || rawUrl.startsWith('https://');
+    const u = new URL(rawUrl, 'http://localhost');
+    if (u.pathname === '/' || u.pathname === '') {
+      u.pathname = '/app';
+    }
+    if (!u.searchParams.has('tab')) {
+      u.searchParams.set('tab', 'benchmarks');
+    }
+    if (isAbsolute) {
+      return u.toString();
+    }
+    return `${u.pathname}${u.search}${u.hash}`;
+  } catch {
+    return '/app?tab=benchmarks';
+  }
+}
+
+function appendQueryParam(base: string, key: string, value: string): string {
+  try {
+    const isAbsolute = base.startsWith('http://') || base.startsWith('https://');
+    const u = new URL(base, 'http://localhost');
+    u.searchParams.set(key, value);
+    if (isAbsolute) {
+      return u.toString();
+    }
+    return `${u.pathname}${u.search}${u.hash}`;
+  } catch {
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}${key}=${encodeURIComponent(value)}`;
+  }
+}
 
 // Clean up old PKCE states every 15 minutes
 setInterval(() => {
@@ -412,7 +448,10 @@ export function createMcpRouter(storage: IStorageStore): Router {
         displayName = 'Lovable Platform',
         preset = 'lovable',
         ownerId = 'default-owner',
+        returnUrl: clientReturnUrl,
       } = req.query as Record<string, string>;
+
+      const returnUrl = sanitizeReturnUrl(clientReturnUrl || (req.headers.referer as string) || '/app?tab=benchmarks');
 
       let clientId = req.query.clientId as string | undefined;
       let clientSecret = req.query.clientSecret as string | undefined;
@@ -478,6 +517,7 @@ export function createMcpRouter(storage: IStorageStore): Router {
         displayName,
         preset,
         ownerId,
+        returnUrl,
         createdAt: Date.now(),
       });
 
@@ -510,22 +550,29 @@ export function createMcpRouter(storage: IStorageStore): Router {
   // 10. OAuth Callback Handler
   // ==========================================
   router.get('/oauth/callback', async (req: Request, res: Response) => {
+    let sessionReturnUrl: string | undefined;
     try {
       const { code, state, error: oauthErr, error_description } = req.query as Record<string, string>;
 
+      if (state) {
+        const tempSession = pkceSessionStore.get(state);
+        if (tempSession) sessionReturnUrl = tempSession.returnUrl;
+      }
+
       if (oauthErr) {
-        return res.redirect(`/?tab=benchmarks&mcp_error=${encodeURIComponent(error_description || oauthErr)}`);
+        return res.redirect(appendQueryParam(sanitizeReturnUrl(sessionReturnUrl), 'mcp_error', error_description || oauthErr));
       }
 
       if (!code || !state) {
-        return res.redirect('/?tab=benchmarks&mcp_error=Missing+authorization+code+or+state');
+        return res.redirect(appendQueryParam(sanitizeReturnUrl(sessionReturnUrl), 'mcp_error', 'Missing authorization code or state'));
       }
 
       const session = pkceSessionStore.get(state);
       if (!session) {
-        return res.redirect('/?tab=benchmarks&mcp_error=Invalid+or+expired+OAuth+state+token');
+        return res.redirect(appendQueryParam(sanitizeReturnUrl(sessionReturnUrl), 'mcp_error', 'Invalid or expired OAuth state token'));
       }
       pkceSessionStore.delete(state);
+      sessionReturnUrl = session.returnUrl;
 
       // Exchange code + PKCE code_verifier for tokens
       let tokens;
@@ -539,11 +586,11 @@ export function createMcpRouter(storage: IStorageStore): Router {
           codeVerifier: session.codeVerifier,
         });
       } catch (exchangeErr: any) {
-        return res.redirect(`/?tab=benchmarks&mcp_error=${encodeURIComponent(exchangeErr.message)}`);
+        return res.redirect(appendQueryParam(sanitizeReturnUrl(sessionReturnUrl), 'mcp_error', exchangeErr.message));
       }
 
       if (!tokens.accessToken) {
-        return res.redirect('/?tab=benchmarks&mcp_error=No+access_token+returned+by+token+endpoint');
+        return res.redirect(appendQueryParam(sanitizeReturnUrl(sessionReturnUrl), 'mcp_error', 'No access_token returned by token endpoint'));
       }
 
       // Handshake and discover tools using access token
@@ -588,9 +635,38 @@ export function createMcpRouter(storage: IStorageStore): Router {
       };
 
       await storage.saveMcpConnection(record);
-      res.redirect(`/?tab=benchmarks&mcp_connected=${encodeURIComponent(connectionId)}`);
+
+      // Dual sync: Also save/update ProviderConnection for Lovable or matching presets
+      if (session.preset === 'lovable' || session.serverUrl?.includes('lovable.dev')) {
+        try {
+          await storage.saveProviderConnection({
+            provider: 'lovable',
+            name: session.displayName || 'Lovable Platform',
+            status: 'connected',
+            authType: 'oauth',
+            serverUrl: session.serverUrl,
+            workspaceName: 'Lovable Platform',
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            tokenExpiresAt: tokens.expiresAt ? new Date(tokens.expiresAt).toISOString() : undefined,
+            discoveredTools: discoveredTools.map((t) => ({
+              name: t.name,
+              description: t.description || '',
+              inputSchema: t.inputSchema,
+            })),
+            supportsDirectGeneration: true,
+            supportsExport: true,
+            connectedAt: new Date().toISOString(),
+            lastSyncedAt: new Date().toISOString(),
+          });
+        } catch (provSyncErr) {
+          console.error('Failed to sync ProviderConnection:', provSyncErr);
+        }
+      }
+
+      res.redirect(appendQueryParam(sanitizeReturnUrl(session.returnUrl), 'mcp_connected', connectionId));
     } catch (err: any) {
-      res.redirect(`/?tab=benchmarks&mcp_error=${encodeURIComponent(err.message)}`);
+      res.redirect(appendQueryParam(sanitizeReturnUrl(sessionReturnUrl), 'mcp_error', err.message));
     }
   });
 

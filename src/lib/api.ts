@@ -852,6 +852,7 @@ export const api = {
     preset?: string;
     clientId?: string;
     clientSecret?: string;
+    returnUrl?: string;
   }): Promise<{ authUrl: string; state: string }> => {
     const params = new URLSearchParams();
     if (options.serverUrl) params.set('serverUrl', options.serverUrl);
@@ -859,6 +860,7 @@ export const api = {
     if (options.preset) params.set('preset', options.preset);
     if (options.clientId) params.set('clientId', options.clientId);
     if (options.clientSecret) params.set('clientSecret', options.clientSecret);
+    if (options.returnUrl) params.set('returnUrl', options.returnUrl);
 
     const res = await fetch(`${API_BASE}/mcp/oauth/authorize?${params.toString()}`, {
       headers: { Accept: 'application/json' },
