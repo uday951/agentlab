@@ -593,17 +593,63 @@ export function createMcpRouter(storage: IStorageStore): Router {
         return res.redirect(appendQueryParam(sanitizeReturnUrl(sessionReturnUrl), 'mcp_error', 'No access_token returned by token endpoint'));
       }
 
-      // Handshake and discover tools using access token
-      const client = new UniversalMcpClient({
-        transport: 'streamable_http',
-        serverUrl: session.serverUrl,
-        bearerToken: tokens.accessToken,
-      });
+      // Handshake and discover tools using access token (with resilient fallbacks)
+      let protocolVersion = '2024-11-05';
+      let serverCapabilities: any = {};
+      let discoveredTools: any[] = [];
+      let discoveredResources: any[] = [];
 
-      const initResult = await client.initialize();
-      const discoveredTools = await client.listTools();
-      const discoveredResources = await client.listResources();
-      client.close();
+      try {
+        const client = new UniversalMcpClient({
+          transport: 'streamable_http',
+          serverUrl: session.serverUrl,
+          bearerToken: tokens.accessToken,
+        });
+
+        try {
+          const initResult = await client.initialize();
+          if (initResult) {
+            protocolVersion = initResult.protocolVersion || protocolVersion;
+            serverCapabilities = initResult.capabilities || {};
+          }
+        } catch (initErr: any) {
+          console.warn('MCP initialize warning (proceeding with tool discovery):', initErr.message);
+        }
+
+        try {
+          discoveredTools = await client.listTools();
+        } catch (listErr: any) {
+          console.warn('MCP tools/list warning:', listErr.message);
+        }
+
+        try {
+          discoveredResources = await client.listResources();
+        } catch {
+          // Resources discovery is optional
+        }
+
+        client.close();
+      } catch (clientErr: any) {
+        console.warn('MCP client error during discovery:', clientErr.message);
+      }
+
+      // If discoveredTools is empty and preset is Lovable, fallback to documented Lovable MCP tools
+      if (
+        (!discoveredTools || discoveredTools.length === 0) &&
+        (session.preset === 'lovable' || session.serverUrl?.includes('lovable.dev'))
+      ) {
+        const lovableClient = new LovableMcpClient(tokens.accessToken);
+        const defaultTools = lovableClient.getDefaultKnownTools();
+        discoveredTools = defaultTools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema || { type: 'object', properties: {} },
+          isReadOnly: false,
+          requiresApproval: t.name === 'create_project',
+          isBenchmarkCapable: true,
+          category: t.name === 'create_project' ? 'project_creation' : 'general',
+        }));
+      }
 
       const connectionId = `mcp-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
       const encryptedCredentials = authManager.encryptCredentials({
@@ -625,8 +671,8 @@ export function createMcpRouter(storage: IStorageStore): Router {
         authType: 'oauth_dcr',
         encryptedCredentials,
         connectionStatus: 'connected',
-        protocolVersion: initResult.protocolVersion,
-        serverCapabilities: initResult.capabilities,
+        protocolVersion,
+        serverCapabilities,
         discoveredTools,
         discoveredResources,
         lastConnectedAt: new Date().toISOString(),

@@ -19,6 +19,7 @@ import { BenchmarkGenerator } from '../benchmark/BenchmarkGenerator.ts';
 import { BenchmarkEngine } from '../benchmark/BenchmarkEngine.ts';
 import { ProviderRegistry } from '../providers/ProviderRegistry.ts';
 import { LovableMcpClient } from '../providers/LovableMcpClient.ts';
+import { McpAuthManager } from '../mcp/McpAuthManager.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -97,11 +98,11 @@ export function createBenchmarkRouter(storage: IStorageStore): Router {
       const { code, state, error: oauthErr } = req.query;
 
       if (oauthErr) {
-        return res.redirect(`/?tab=benchmarks&error=${encodeURIComponent(String(oauthErr))}`);
+        return res.redirect(`/app?tab=benchmarks&error=${encodeURIComponent(String(oauthErr))}`);
       }
 
       if (!code || typeof code !== 'string') {
-        return res.redirect('/?tab=benchmarks&error=Missing+OAuth+code');
+        return res.redirect('/app?tab=benchmarks&error=Missing+OAuth+code');
       }
 
       const client = new LovableMcpClient();
@@ -110,10 +111,46 @@ export function createBenchmarkRouter(storage: IStorageStore): Router {
       const tokenData = await client.exchangeCodeForTokens(code, redirectUri);
       await providerRegistry.connectProvider(provider, tokenData);
 
+      // Also persist to MCP connection registry so both Universal MCP and provider show connected
+      const connectionId = `mcp-${Date.now()}-${randomUUID().substring(0, 8)}`;
+      const authManager = new McpAuthManager();
+      const encryptedCredentials = authManager.encryptCredentials({
+        accessToken: tokenData.accessToken,
+        refreshToken: tokenData.refreshToken,
+      });
+
+      const defaultTools = client.getDefaultKnownTools().map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema || { type: 'object', properties: {} },
+        isReadOnly: false,
+        requiresApproval: t.name === 'create_project',
+        isBenchmarkCapable: true,
+        category: t.name === 'create_project' ? 'project_creation' : 'general',
+      }));
+
+      await storage.saveMcpConnection({
+        id: connectionId,
+        ownerId: 'default-owner',
+        displayName: 'Lovable Platform',
+        preset: 'lovable',
+        serverUrl: 'https://mcp.lovable.dev',
+        transport: 'streamable_http',
+        authType: 'oauth_dcr',
+        encryptedCredentials,
+        connectionStatus: 'connected',
+        protocolVersion: '2024-11-05',
+        discoveredTools: defaultTools,
+        discoveredResources: [],
+        lastConnectedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
       // Redirect cleanly to frontend benchmarks tab with success banner
-      res.redirect('/?tab=benchmarks&connected=lovable');
+      res.redirect(`/app?tab=benchmarks&connected=lovable&mcp_connected=${encodeURIComponent(connectionId)}`);
     } catch (err: any) {
-      res.redirect(`/?tab=benchmarks&error=${encodeURIComponent(err.message)}`);
+      res.redirect(`/app?tab=benchmarks&error=${encodeURIComponent(err.message)}`);
     }
   });
 

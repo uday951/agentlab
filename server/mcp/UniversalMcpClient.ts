@@ -32,6 +32,7 @@ export class UniversalMcpClient {
   >();
   private messageCounter = 1;
   private sseEndpointUrl: string | null = null;
+  private sessionId?: string;
 
   constructor(options: UniversalClientOptions) {
     this.options = {
@@ -261,8 +262,13 @@ export class UniversalMcpClient {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
+      'Mcp-Protocol-Version': '2024-11-05',
       ...(this.options.headers || {}),
     };
+
+    if (this.sessionId) {
+      headers['Mcp-Session-Id'] = this.sessionId;
+    }
 
     if (this.options.bearerToken) {
       headers['Authorization'] = `Bearer ${this.options.bearerToken}`;
@@ -277,6 +283,11 @@ export class UniversalMcpClient {
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(this.options.timeoutMs || 15000),
     });
+
+    const returnedSessionId = res.headers.get('Mcp-Session-Id') || res.headers.get('mcp-session-id');
+    if (returnedSessionId) {
+      this.sessionId = returnedSessionId;
+    }
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => res.statusText);
