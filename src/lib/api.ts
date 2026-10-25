@@ -517,4 +517,317 @@ export const api = {
     if (!res.ok) throw new Error(json.error || json.message || 'Failed to fetch agent world');
     return json.data;
   },
+
+  // --- AI Coding Benchmark APIs ---
+  getBenchmarkStats: async (): Promise<BenchmarkDashboardStats> => {
+    const res = await fetch(`${API_BASE}/benchmark/stats`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch benchmark stats');
+    return json.stats;
+  },
+
+  getBenchmarkProjects: async (): Promise<BenchmarkProject[]> => {
+    const res = await fetch(`${API_BASE}/benchmark/projects`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch benchmark projects');
+    return json.projects;
+  },
+
+  getBenchmarkProject: async (id: string): Promise<BenchmarkProject> => {
+    const res = await fetch(`${API_BASE}/benchmark/projects/${id}`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch project details');
+    return json.project;
+  },
+
+  addBenchmarkProject: async (data: FormData | Record<string, any>): Promise<BenchmarkProject> => {
+    let res: Response;
+    if (data instanceof FormData) {
+      res = await fetch(`${API_BASE}/benchmark/projects`, {
+        method: 'POST',
+        body: data,
+      });
+    } else {
+      res = await fetch(`${API_BASE}/benchmark/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+    }
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to add benchmark project');
+    return json.project;
+  },
+
+  prepareBenchmarkProject: async (id: string, githubToken?: string): Promise<BenchmarkProject> => {
+    const res = await fetch(`${API_BASE}/benchmark/projects/${id}/prepare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ githubToken }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to prepare environment');
+    return json.project;
+  },
+
+  updateBenchmarkProjectConfig: async (id: string, config: { envVars?: Record<string, string>; benchmarkCategory?: string }): Promise<BenchmarkProject> => {
+    const res = await fetch(`${API_BASE}/benchmark/projects/${id}/config`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to update project configuration');
+    return json.project;
+  },
+
+  deleteBenchmarkProject: async (id: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/benchmark/projects/${id}`, { method: 'DELETE' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to delete project');
+  },
+
+  getBenchmarkDefinitions: async (projectId: string): Promise<BenchmarkDefinition[]> => {
+    const res = await fetch(`${API_BASE}/benchmark/projects/${projectId}/benchmarks`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch benchmarks');
+    return json.benchmarks;
+  },
+
+  generateBenchmark: async (projectId: string, category?: string): Promise<BenchmarkDefinition> => {
+    const res = await fetch(`${API_BASE}/benchmark/projects/${projectId}/generate-benchmark`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to generate benchmark');
+    return json.benchmark;
+  },
+
+  updateBenchmarkDefinition: async (id: string, data: Partial<BenchmarkDefinition>): Promise<BenchmarkDefinition> => {
+    const res = await fetch(`${API_BASE}/benchmark/benchmarks/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to update benchmark definition');
+    return json.benchmark;
+  },
+
+  executeBenchmarkRun: async (projectId: string, benchmarkId?: string): Promise<BenchmarkRun> => {
+    const res = await fetch(`${API_BASE}/benchmark/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, benchmarkId }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to execute benchmark run');
+    return json.run;
+  },
+
+  getBenchmarkRuns: async (projectId?: string): Promise<BenchmarkRun[]> => {
+    const url = projectId ? `${API_BASE}/benchmark/runs?projectId=${projectId}` : `${API_BASE}/benchmark/runs`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch benchmark runs');
+    return json.runs;
+  },
+
+  getBenchmarkRun: async (id: string): Promise<BenchmarkRun> => {
+    const res = await fetch(`${API_BASE}/benchmark/runs/${id}`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch benchmark run details');
+    return json.run;
+  },
+
+  getProviderComparisons: async (projectIds?: string[]): Promise<ProviderComparisonItem[]> => {
+    const url = projectIds && projectIds.length > 0
+      ? `${API_BASE}/benchmark/compare?projectIds=${projectIds.join(',')}`
+      : `${API_BASE}/benchmark/compare`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch provider comparisons');
+    return json.comparisons;
+  },
 };
+
+// ==========================================
+// AI Coding Agent Benchmark Types for Frontend
+// ==========================================
+
+export type BenchmarkOrigin = 'lovable' | 'emergent' | 'bolt' | 'replit' | 'generic_github' | 'zip_upload' | 'agentlab_agent';
+
+export interface ProjectAnalysis {
+  framework: string;
+  language: string;
+  runtime: string;
+  packageManager: string;
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
+  lockfileDetected: boolean;
+  buildScript?: string;
+  testScript?: string;
+  startScript?: string;
+  devScript?: string;
+  entrypoints: {
+    frontend?: string;
+    backend?: string;
+    root?: string;
+  };
+  structure: {
+    isMonorepo: boolean;
+    frontendDir?: string;
+    backendDir?: string;
+  };
+  databaseDetected?: string;
+  authDetected?: string;
+  referencedEnvVars: string[];
+  existingTestFiles: string[];
+  likelyCapabilities: string[];
+  supportedRuntime: boolean;
+  unsupportedReasons?: string[];
+}
+
+export interface BenchmarkProject {
+  id: string;
+  name: string;
+  description?: string;
+  source: 'github' | 'zip';
+  origin: BenchmarkOrigin;
+  repoUrl?: string;
+  branch?: string;
+  commitSha?: string;
+  zipFileName?: string;
+  benchmarkCategory?: string;
+  analysis?: ProjectAnalysis;
+  preparationStatus: 'not_prepared' | 'preparing' | 'ready' | 'needs_configuration' | 'failed';
+  preparationLogs?: string;
+  envVars?: Record<string, string>;
+  missingRequirements?: string[];
+  detectedServices?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BenchmarkScenario {
+  id: string;
+  name: string;
+  objective: string;
+  category: 'functional' | 'build' | 'accessibility' | 'responsive' | 'security' | 'persistence';
+  type: string;
+  preconditions?: string;
+  executionSteps: string[];
+  expectedResult: string;
+  testSpec?: any;
+}
+
+export interface BenchmarkDefinition {
+  id: string;
+  projectId: string;
+  category: string;
+  name: string;
+  description: string;
+  generatedBy: 'ai' | 'template';
+  scoringWeights: {
+    functional: number;
+    buildReliability: number;
+    accessibility: number;
+    responsive: number;
+    security: number;
+  };
+  scenarios: BenchmarkScenario[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BenchmarkScenarioRun {
+  scenarioId: string;
+  name: string;
+  category: 'functional' | 'build' | 'accessibility' | 'responsive' | 'security' | 'persistence';
+  type: string;
+  status: 'passed' | 'failed' | 'error' | 'skipped';
+  durationMs: number;
+  expectedResult: string;
+  actualResult: string;
+  logs: string[];
+  screenshots?: string[];
+  traces?: any;
+  errorMessage?: string;
+}
+
+export interface BenchmarkRun {
+  id: string;
+  projectId: string;
+  projectName: string;
+  projectOrigin: BenchmarkOrigin;
+  benchmarkId: string;
+  commitSha?: string;
+  status: 'queued' | 'preparing' | 'needs_configuration' | 'running' | 'completed' | 'failed' | 'cancelled';
+  failureType?: 'application' | 'infrastructure';
+  buildStatus: 'passed' | 'failed' | 'skipped' | 'not_run';
+  buildOutput?: string;
+  scenarioRuns: BenchmarkScenarioRun[];
+  summary: {
+    totalScenarios: number;
+    passedScenarios: number;
+    failedScenarios: number;
+    skippedScenarios: number;
+    errorScenarios: number;
+    overallScore: number;
+    categoryScores: {
+      functional: { score: number; available: boolean; weight: number };
+      buildReliability: { score: number; available: boolean; weight: number };
+      accessibility: { score: number; available: boolean; weight: number };
+      responsive: { score: number; available: boolean; weight: number };
+      security: { score: number; available: boolean; weight: number };
+    };
+    failureCategories: string[];
+    actionableDebuggingSuggestions: string[];
+  };
+  executionDurationMs: number;
+  startedAt: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
+export interface ProviderComparisonItem {
+  projectId: string;
+  projectName: string;
+  origin: BenchmarkOrigin;
+  runId: string;
+  runDate: string;
+  commitSha?: string;
+  buildSuccess: boolean;
+  functionalPassRate: number;
+  overallScore: number;
+  accessibilityScore: number;
+  responsiveScore: number;
+  securityScore: number;
+  durationMs: number;
+  totalTests: number;
+  passedTests: number;
+  failedTests: number;
+  failureCategories: string[];
+  status: string;
+  failureType?: 'application' | 'infrastructure';
+}
+
+export interface BenchmarkDashboardStats {
+  totalProjects: number;
+  completedRuns: number;
+  failedRuns: number;
+  averageTestPassRate: number;
+  buildSuccessRate: number;
+  averageExecutionDurationMs: number;
+  mostCommonFailureCategories: Array<{ category: string; count: number }>;
+  providerComparisons: Array<{
+    origin: BenchmarkOrigin;
+    projectCount: number;
+    runsCount: number;
+    averageScore: number;
+    buildSuccessRate: number;
+    passRate: number;
+  }>;
+}

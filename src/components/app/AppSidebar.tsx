@@ -10,10 +10,14 @@ import {
   Cpu,
   X,
   ChevronRight,
+  FileCode2,
+  Layers,
 } from 'lucide-react';
 
 export const navItems = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
+  { id: 'benchmarks', icon: FileCode2, label: 'Coding Benchmarks' },
+  { id: 'compare', icon: Layers, label: 'Compare Providers' },
   { id: 'agents', icon: Bot, label: 'Agents' },
   { id: 'worlds', icon: Globe, label: 'Worlds' },
   { id: 'experiments', icon: List, label: 'Experiments' },

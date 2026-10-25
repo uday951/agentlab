@@ -1,6 +1,20 @@
 import type { IStorageStore } from './storage.ts';
 import { DatabaseNotConfiguredError } from './storage.ts';
-import type { Agent, World, Scenario, Experiment, KnowledgeDocument, ExecutionEvent, PlatformConfig } from '../types.ts';
+import type {
+  Agent,
+  World,
+  Scenario,
+  Experiment,
+  KnowledgeDocument,
+  ExecutionEvent,
+  PlatformConfig,
+  BenchmarkProject,
+  BenchmarkDefinition,
+  BenchmarkRun,
+  BenchmarkDashboardStats,
+  ProviderComparisonItem,
+  BenchmarkOrigin,
+} from '../types.ts';
 import {
   AgentModel,
   WorldModel,
@@ -10,6 +24,9 @@ import {
   ExecutionEventModel,
   EvaluationResultModel,
   PlatformConfigModel,
+  BenchmarkProjectModel,
+  BenchmarkDefinitionModel,
+  BenchmarkRunModel,
 } from '../models/index.ts';
 import { defaultShopSphereWorld, defaultScenarios, defaultSampleAgent, defaultDeepSeekAgent } from './seedData.ts';
 
@@ -354,6 +371,254 @@ export class MongoStore implements IStorageStore {
     }
   }
 
+  // --- Benchmark Projects ---
+  public async getBenchmarkProjects(): Promise<BenchmarkProject[]> {
+    this.assertConnected();
+    const docs = await BenchmarkProjectModel.find({}).sort({ createdAt: -1 }).lean();
+    return docs.map(this.mapBenchmarkProject);
+  }
+
+  public async getBenchmarkProject(id: string): Promise<BenchmarkProject | null> {
+    this.assertConnected();
+    const doc = await BenchmarkProjectModel.findOne({ id }).lean();
+    return doc ? this.mapBenchmarkProject(doc) : null;
+  }
+
+  public async saveBenchmarkProject(project: BenchmarkProject): Promise<BenchmarkProject> {
+    this.assertConnected();
+    const updated = await BenchmarkProjectModel.findOneAndUpdate(
+      { id: project.id },
+      { $set: project },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    ).lean();
+    return this.mapBenchmarkProject(updated);
+  }
+
+  public async deleteBenchmarkProject(id: string): Promise<boolean> {
+    this.assertConnected();
+    const res = await BenchmarkProjectModel.deleteOne({ id });
+    await BenchmarkDefinitionModel.deleteMany({ projectId: id });
+    await BenchmarkRunModel.deleteMany({ projectId: id });
+    return (res.deletedCount || 0) > 0;
+  }
+
+  // --- Benchmark Definitions ---
+  public async getBenchmarkDefinitions(projectId?: string): Promise<BenchmarkDefinition[]> {
+    this.assertConnected();
+    const query = projectId ? { projectId } : {};
+    const docs = await BenchmarkDefinitionModel.find(query).sort({ createdAt: -1 }).lean();
+    return docs.map(this.mapBenchmarkDefinition);
+  }
+
+  public async getBenchmarkDefinition(id: string): Promise<BenchmarkDefinition | null> {
+    this.assertConnected();
+    const doc = await BenchmarkDefinitionModel.findOne({ id }).lean();
+    return doc ? this.mapBenchmarkDefinition(doc) : null;
+  }
+
+  public async saveBenchmarkDefinition(def: BenchmarkDefinition): Promise<BenchmarkDefinition> {
+    this.assertConnected();
+    const updated = await BenchmarkDefinitionModel.findOneAndUpdate(
+      { id: def.id },
+      { $set: def },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    ).lean();
+    return this.mapBenchmarkDefinition(updated);
+  }
+
+  public async deleteBenchmarkDefinition(id: string): Promise<boolean> {
+    this.assertConnected();
+    const res = await BenchmarkDefinitionModel.deleteOne({ id });
+    return (res.deletedCount || 0) > 0;
+  }
+
+  // --- Benchmark Runs ---
+  public async getBenchmarkRuns(projectId?: string): Promise<BenchmarkRun[]> {
+    this.assertConnected();
+    const query = projectId ? { projectId } : {};
+    const docs = await BenchmarkRunModel.find(query).sort({ createdAt: -1 }).lean();
+    return docs.map(this.mapBenchmarkRun);
+  }
+
+  public async getBenchmarkRun(id: string): Promise<BenchmarkRun | null> {
+    this.assertConnected();
+    const doc = await BenchmarkRunModel.findOne({ id }).lean();
+    return doc ? this.mapBenchmarkRun(doc) : null;
+  }
+
+  public async saveBenchmarkRun(run: BenchmarkRun): Promise<BenchmarkRun> {
+    this.assertConnected();
+    const updated = await BenchmarkRunModel.findOneAndUpdate(
+      { id: run.id },
+      { $set: run },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    ).lean();
+    return this.mapBenchmarkRun(updated);
+  }
+
+  public async deleteBenchmarkRun(id: string): Promise<boolean> {
+    this.assertConnected();
+    const res = await BenchmarkRunModel.deleteOne({ id });
+    return (res.deletedCount || 0) > 0;
+  }
+
+  // --- Benchmark Dashboard Stats ---
+  public async getBenchmarkStats(): Promise<BenchmarkDashboardStats> {
+    this.assertConnected();
+    const totalProjects = await BenchmarkProjectModel.countDocuments();
+    const allRuns = await BenchmarkRunModel.find({}).lean();
+
+    const completedRuns = allRuns.filter((r: any) => r.status === 'completed');
+    const failedRuns = allRuns.filter((r: any) => r.status === 'failed' || r.status === 'cancelled');
+
+    let totalPassRateSum = 0;
+    let buildPassedCount = 0;
+    let buildEvaluatedCount = 0;
+    let durationSum = 0;
+    const failureCategoryMap: Record<string, number> = {};
+
+    for (const run of completedRuns) {
+      const summary = run.summary;
+      if (summary) {
+        if (summary.totalScenarios > 0) {
+          totalPassRateSum += (summary.passedScenarios / summary.totalScenarios) * 100;
+        }
+        if (summary.failureCategories && Array.isArray(summary.failureCategories)) {
+          for (const cat of summary.failureCategories) {
+            failureCategoryMap[cat] = (failureCategoryMap[cat] || 0) + 1;
+          }
+        }
+      }
+      if (run.buildStatus === 'passed') buildPassedCount++;
+      if (run.buildStatus === 'passed' || run.buildStatus === 'failed') buildEvaluatedCount++;
+      durationSum += run.executionDurationMs || 0;
+    }
+
+    const averageTestPassRate = completedRuns.length > 0
+      ? Math.round((totalPassRateSum / completedRuns.length) * 10) / 10
+      : 0;
+
+    const buildSuccessRate = buildEvaluatedCount > 0
+      ? Math.round((buildPassedCount / buildEvaluatedCount) * 1000) / 10
+      : 0;
+
+    const averageExecutionDurationMs = completedRuns.length > 0
+      ? Math.round(durationSum / completedRuns.length)
+      : 0;
+
+    const mostCommonFailureCategories = Object.entries(failureCategoryMap)
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+
+    // Group by provider origin
+    const providerMap: Record<BenchmarkOrigin, {
+      projectCount: number;
+      runsCount: number;
+      scoreSum: number;
+      buildPassed: number;
+      buildTotal: number;
+      passRateSum: number;
+    }> = {
+      lovable: { projectCount: 0, runsCount: 0, scoreSum: 0, buildPassed: 0, buildTotal: 0, passRateSum: 0 },
+      emergent: { projectCount: 0, runsCount: 0, scoreSum: 0, buildPassed: 0, buildTotal: 0, passRateSum: 0 },
+      bolt: { projectCount: 0, runsCount: 0, scoreSum: 0, buildPassed: 0, buildTotal: 0, passRateSum: 0 },
+      replit: { projectCount: 0, runsCount: 0, scoreSum: 0, buildPassed: 0, buildTotal: 0, passRateSum: 0 },
+      generic_github: { projectCount: 0, runsCount: 0, scoreSum: 0, buildPassed: 0, buildTotal: 0, passRateSum: 0 },
+      zip_upload: { projectCount: 0, runsCount: 0, scoreSum: 0, buildPassed: 0, buildTotal: 0, passRateSum: 0 },
+      agentlab_agent: { projectCount: 0, runsCount: 0, scoreSum: 0, buildPassed: 0, buildTotal: 0, passRateSum: 0 },
+    };
+
+    const projects = await BenchmarkProjectModel.find({}).lean();
+    for (const p of projects) {
+      const orig = p.origin as BenchmarkOrigin;
+      if (providerMap[orig]) {
+        providerMap[orig].projectCount++;
+      }
+    }
+
+    for (const r of completedRuns) {
+      const orig = r.projectOrigin as BenchmarkOrigin;
+      if (providerMap[orig]) {
+        providerMap[orig].runsCount++;
+        providerMap[orig].scoreSum += r.summary?.overallScore || 0;
+        if (r.buildStatus === 'passed') providerMap[orig].buildPassed++;
+        if (r.buildStatus === 'passed' || r.buildStatus === 'failed') providerMap[orig].buildTotal++;
+        if (r.summary && r.summary.totalScenarios > 0) {
+          providerMap[orig].passRateSum += (r.summary.passedScenarios / r.summary.totalScenarios) * 100;
+        }
+      }
+    }
+
+    const providerComparisons = Object.entries(providerMap).map(([origin, data]) => ({
+      origin: origin as BenchmarkOrigin,
+      projectCount: data.projectCount,
+      runsCount: data.runsCount,
+      averageScore: data.runsCount > 0 ? Math.round((data.scoreSum / data.runsCount) * 10) / 10 : 0,
+      buildSuccessRate: data.buildTotal > 0 ? Math.round((data.buildPassed / data.buildTotal) * 1000) / 10 : 0,
+      passRate: data.runsCount > 0 ? Math.round((data.passRateSum / data.runsCount) * 10) / 10 : 0,
+    })).filter(p => p.projectCount > 0 || p.runsCount > 0);
+
+    return {
+      totalProjects,
+      completedRuns: completedRuns.length,
+      failedRuns: failedRuns.length,
+      averageTestPassRate,
+      buildSuccessRate,
+      averageExecutionDurationMs,
+      mostCommonFailureCategories,
+      providerComparisons,
+    };
+  }
+
+  // --- Provider Comparisons ---
+  public async getProviderComparisons(projectIds?: string[]): Promise<ProviderComparisonItem[]> {
+    this.assertConnected();
+    const query = projectIds && projectIds.length > 0 ? { projectId: { $in: projectIds } } : {};
+    const runs = await BenchmarkRunModel.find(query).sort({ createdAt: -1 }).lean();
+
+    const items: ProviderComparisonItem[] = [];
+
+    for (const raw of runs) {
+      const summary = raw.summary || {
+        totalScenarios: 0,
+        passedScenarios: 0,
+        failedScenarios: 0,
+        overallScore: 0,
+        categoryScores: {} as any,
+        failureCategories: [],
+      };
+
+      const functionalPassRate = summary.totalScenarios > 0
+        ? Math.round((summary.passedScenarios / summary.totalScenarios) * 1000) / 10
+        : 0;
+
+      items.push({
+        projectId: raw.projectId,
+        projectName: raw.projectName,
+        origin: raw.projectOrigin as BenchmarkOrigin,
+        runId: raw.id,
+        runDate: raw.createdAt,
+        commitSha: raw.commitSha,
+        buildSuccess: raw.buildStatus === 'passed',
+        functionalPassRate,
+        overallScore: summary.overallScore || 0,
+        accessibilityScore: summary.categoryScores?.accessibility?.score ?? 0,
+        responsiveScore: summary.categoryScores?.responsive?.score ?? 0,
+        securityScore: summary.categoryScores?.security?.score ?? 0,
+        durationMs: raw.executionDurationMs || 0,
+        totalTests: summary.totalScenarios,
+        passedTests: summary.passedScenarios,
+        failedTests: summary.failedScenarios,
+        failureCategories: summary.failureCategories || [],
+        status: raw.status,
+        failureType: raw.failureType,
+      });
+    }
+
+    return items;
+  }
+
   // --- Mapping Helpers ---
   private mapAgent(raw: any): Agent {
     return {
@@ -472,6 +737,112 @@ export class MongoStore implements IStorageStore {
       outputSummary: raw.outputSummary,
       status: raw.status,
       metadata: raw.metadata,
+    };
+  }
+
+  private mapBenchmarkProject(raw: any): BenchmarkProject {
+    return {
+      id: raw.id,
+      name: raw.name,
+      description: raw.description || '',
+      source: raw.source,
+      origin: raw.origin,
+      repoUrl: raw.repoUrl,
+      branch: raw.branch || 'main',
+      commitSha: raw.commitSha,
+      zipFileName: raw.zipFileName,
+      benchmarkCategory: raw.benchmarkCategory,
+      analysis: raw.analysis ? {
+        framework: raw.analysis.framework || 'Unknown',
+        language: raw.analysis.language || 'unknown',
+        runtime: raw.analysis.runtime || 'unknown',
+        packageManager: raw.analysis.packageManager || 'none',
+        dependencies: raw.analysis.dependencies instanceof Map
+          ? Object.fromEntries(raw.analysis.dependencies)
+          : (raw.analysis.dependencies || {}),
+        devDependencies: raw.analysis.devDependencies instanceof Map
+          ? Object.fromEntries(raw.analysis.devDependencies)
+          : (raw.analysis.devDependencies || {}),
+        lockfileDetected: !!raw.analysis.lockfileDetected,
+        buildScript: raw.analysis.buildScript,
+        testScript: raw.analysis.testScript,
+        startScript: raw.analysis.startScript,
+        devScript: raw.analysis.devScript,
+        entrypoints: raw.analysis.entrypoints || {},
+        structure: raw.analysis.structure || { isMonorepo: false },
+        databaseDetected: raw.analysis.databaseDetected,
+        authDetected: raw.analysis.authDetected,
+        referencedEnvVars: raw.analysis.referencedEnvVars || [],
+        existingTestFiles: raw.analysis.existingTestFiles || [],
+        likelyCapabilities: raw.analysis.likelyCapabilities || [],
+        supportedRuntime: raw.analysis.supportedRuntime !== false,
+        unsupportedReasons: raw.analysis.unsupportedReasons || [],
+      } : undefined,
+      preparationStatus: raw.preparationStatus || 'not_prepared',
+      preparationLogs: raw.preparationLogs || '',
+      envVars: raw.envVars instanceof Map ? Object.fromEntries(raw.envVars) : (raw.envVars || {}),
+      missingRequirements: raw.missingRequirements || [],
+      detectedServices: raw.detectedServices || [],
+      createdAt: raw.createdAt ? new Date(raw.createdAt).toISOString() : new Date().toISOString(),
+      updatedAt: raw.updatedAt ? new Date(raw.updatedAt).toISOString() : new Date().toISOString(),
+    };
+  }
+
+  private mapBenchmarkDefinition(raw: any): BenchmarkDefinition {
+    return {
+      id: raw.id,
+      projectId: raw.projectId,
+      category: raw.category,
+      name: raw.name,
+      description: raw.description || '',
+      generatedBy: raw.generatedBy || 'template',
+      scoringWeights: raw.scoringWeights || {
+        functional: 50,
+        buildReliability: 20,
+        accessibility: 10,
+        responsive: 10,
+        security: 10,
+      },
+      scenarios: raw.scenarios || [],
+      createdAt: raw.createdAt ? new Date(raw.createdAt).toISOString() : new Date().toISOString(),
+      updatedAt: raw.updatedAt ? new Date(raw.updatedAt).toISOString() : new Date().toISOString(),
+    };
+  }
+
+  private mapBenchmarkRun(raw: any): BenchmarkRun {
+    return {
+      id: raw.id,
+      projectId: raw.projectId,
+      projectName: raw.projectName,
+      projectOrigin: raw.projectOrigin,
+      benchmarkId: raw.benchmarkId,
+      commitSha: raw.commitSha,
+      status: raw.status || 'queued',
+      failureType: raw.failureType,
+      buildStatus: raw.buildStatus || 'not_run',
+      buildOutput: raw.buildOutput,
+      scenarioRuns: raw.scenarioRuns || [],
+      summary: raw.summary || {
+        totalScenarios: 0,
+        passedScenarios: 0,
+        failedScenarios: 0,
+        skippedScenarios: 0,
+        errorScenarios: 0,
+        overallScore: 0,
+        categoryScores: {
+          functional: { score: 0, available: false, weight: 50 },
+          buildReliability: { score: 0, available: false, weight: 20 },
+          accessibility: { score: 0, available: false, weight: 10 },
+          responsive: { score: 0, available: false, weight: 10 },
+          security: { score: 0, available: false, weight: 10 },
+        },
+        failureCategories: [],
+        actionableDebuggingSuggestions: [],
+      },
+      executionDurationMs: raw.executionDurationMs || 0,
+      startedAt: raw.startedAt ? new Date(raw.startedAt).toISOString() : new Date().toISOString(),
+      completedAt: raw.completedAt ? new Date(raw.completedAt).toISOString() : undefined,
+      createdAt: raw.createdAt ? new Date(raw.createdAt).toISOString() : new Date().toISOString(),
     };
   }
 }

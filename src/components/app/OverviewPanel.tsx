@@ -142,6 +142,40 @@ export const OverviewPanel = ({ onNavigate, onRunQuickDemo }: OverviewProps) => 
         })}
       </div>
 
+      {/* AI Coding Benchmark Feature Banner */}
+      <div className="bg-gradient-to-r from-burgundy via-[#4A1224] to-burgundy text-ivory rounded p-5 mb-8 border border-copper/30 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] bg-copper text-burgundy font-mono font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+              New: Coding Benchmark Platform
+            </span>
+            <span className="text-xs text-copper font-mono">“Where AI Agents Meet Reality”</span>
+          </div>
+          <h2 className="text-base font-bold font-display text-ivory">
+            Benchmark AI-Generated Applications (Lovable, Emergent, Bolt.new, Replit Agent)
+          </h2>
+          <p className="text-xs text-ivory/70 max-w-2xl">
+            Import generated codebases via GitHub or ZIP, automatically prepare dependencies in isolated execution sandboxes, run real 5-pillar evaluations, and compare providers side-by-side.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={() => onNavigate('benchmarks')}
+            className="px-4 py-2 rounded bg-copper text-burgundy font-mono font-bold text-xs hover:bg-copper-dark transition-colors cursor-pointer shadow-sm flex items-center gap-1.5"
+          >
+            <span>Open Benchmarks</span>
+            <ArrowRight size={13} />
+          </button>
+          <button
+            onClick={() => onNavigate('compare')}
+            className="px-3 py-2 rounded border border-copper/40 text-ivory font-mono text-xs hover:bg-white/10 transition-colors cursor-pointer"
+          >
+            <span>Compare Providers</span>
+          </button>
+        </div>
+      </div>
+
       {/* Chart + Recent Experiments Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 mb-8">
         {/* Metric Bar Chart */}

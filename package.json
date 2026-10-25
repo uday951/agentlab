@@ -10,9 +10,11 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "start": "node --experimental-strip-types server/index.ts",
-    "test": "node --experimental-strip-types --test tests/adapters.test.ts tests/tools.test.ts tests/rag.test.ts tests/evaluation.test.ts tests/models.test.ts tests/environmentGenerator.test.ts tests/runnerPipeline.test.ts"
+    "test": "node --experimental-strip-types --test tests/adapters.test.ts tests/tools.test.ts tests/rag.test.ts tests/evaluation.test.ts tests/models.test.ts tests/environmentGenerator.test.ts tests/runnerPipeline.test.ts tests/benchmarkPipeline.test.ts"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/multer": "^2.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.6.1",
     "postcss": "^8.5.28",
@@ -28,12 +30,15 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.186.0",
+    "adm-zip": "^0.6.1",
     "cors": "^2.8.6",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "framer-motion": "^13.4.4",
     "lucide-react": "^0.447.0",
     "mongoose": "^9.11.4",
+    "multer": "^2.5.0",
+    "playwright": "^1.64.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-is": "^19.3.0",

@@ -243,3 +243,214 @@ export interface Experiment {
   startedAt?: string;
   completedAt?: string;
 }
+
+// ==========================================
+// AI Coding Agent Benchmark Platform Types
+// ==========================================
+
+export type BenchmarkOrigin = 'lovable' | 'emergent' | 'bolt' | 'replit' | 'generic_github' | 'zip_upload' | 'agentlab_agent';
+
+export type BenchmarkProjectSource = 'github' | 'zip';
+
+export interface ProjectAnalysis {
+  framework: string;
+  language: 'typescript' | 'javascript' | 'python' | 'go' | 'rust' | 'unknown';
+  runtime: 'nodejs' | 'python' | 'unknown';
+  packageManager: 'npm' | 'pnpm' | 'yarn' | 'pip' | 'poetry' | 'none';
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
+  lockfileDetected: boolean;
+  buildScript?: string;
+  testScript?: string;
+  startScript?: string;
+  devScript?: string;
+  entrypoints: {
+    frontend?: string;
+    backend?: string;
+    root?: string;
+  };
+  structure: {
+    isMonorepo: boolean;
+    frontendDir?: string;
+    backendDir?: string;
+  };
+  databaseDetected?: string;
+  authDetected?: string;
+  referencedEnvVars: string[];
+  existingTestFiles: string[];
+  likelyCapabilities: string[];
+  supportedRuntime: boolean;
+  unsupportedReasons?: string[];
+}
+
+export interface BenchmarkProject {
+  id: string;
+  name: string;
+  description?: string;
+  source: BenchmarkProjectSource;
+  origin: BenchmarkOrigin;
+  repoUrl?: string;
+  branch?: string;
+  commitSha?: string;
+  zipFileName?: string;
+  benchmarkCategory?: string; // e.g. 'task_management' | 'ecommerce' | 'dashboard' | 'auth' | 'saas' | 'api'
+  analysis?: ProjectAnalysis;
+  preparationStatus: 'not_prepared' | 'preparing' | 'ready' | 'needs_configuration' | 'failed';
+  preparationLogs?: string;
+  envVars?: Record<string, string>;
+  missingRequirements?: string[];
+  detectedServices?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type BenchmarkScenarioType =
+  | 'browser'
+  | 'api'
+  | 'build'
+  | 'unit_test'
+  | 'static_security'
+  | 'accessibility'
+  | 'responsive'
+  | 'persistence';
+
+export interface BenchmarkScenario {
+  id: string;
+  name: string;
+  objective: string;
+  category: 'functional' | 'build' | 'accessibility' | 'responsive' | 'security' | 'persistence';
+  type: BenchmarkScenarioType;
+  preconditions?: string;
+  testData?: Record<string, any>;
+  executionSteps: string[];
+  expectedResult: string;
+  testSpec?: {
+    targetUrlPath?: string;
+    actionSequence?: Array<{
+      action: 'navigate' | 'click' | 'fill' | 'check' | 'wait' | 'assert_text' | 'assert_element' | 'reload';
+      selector?: string;
+      value?: string;
+      timeoutMs?: number;
+    }>;
+    apiEndpoint?: string;
+    apiMethod?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    apiHeaders?: Record<string, string>;
+    apiBody?: any;
+    expectedStatusCode?: number;
+    expectedResponseBodyContains?: string;
+  };
+}
+
+export interface ScoringWeights {
+  functional: number;       // default 50
+  buildReliability: number; // default 20
+  accessibility: number;    // default 10
+  responsive: number;       // default 10
+  security: number;         // default 10
+}
+
+export interface BenchmarkDefinition {
+  id: string;
+  projectId: string;
+  category: string;
+  name: string;
+  description: string;
+  generatedBy: 'ai' | 'template';
+  scoringWeights: ScoringWeights;
+  scenarios: BenchmarkScenario[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BenchmarkScenarioRun {
+  scenarioId: string;
+  name: string;
+  category: 'functional' | 'build' | 'accessibility' | 'responsive' | 'security' | 'persistence';
+  type: BenchmarkScenarioType;
+  status: 'passed' | 'failed' | 'error' | 'skipped';
+  durationMs: number;
+  expectedResult: string;
+  actualResult: string;
+  logs: string[];
+  screenshots?: string[]; // base64 images or relative paths
+  traces?: any;
+  errorMessage?: string;
+}
+
+export interface BenchmarkRunSummary {
+  totalScenarios: number;
+  passedScenarios: number;
+  failedScenarios: number;
+  skippedScenarios: number;
+  errorScenarios: number;
+  overallScore: number; // 0 to 100
+  categoryScores: {
+    functional: { score: number; available: boolean; weight: number };
+    buildReliability: { score: number; available: boolean; weight: number };
+    accessibility: { score: number; available: boolean; weight: number };
+    responsive: { score: number; available: boolean; weight: number };
+    security: { score: number; available: boolean; weight: number };
+  };
+  failureCategories: string[];
+  actionableDebuggingSuggestions: string[];
+}
+
+export interface BenchmarkRun {
+  id: string;
+  projectId: string;
+  projectName: string;
+  projectOrigin: BenchmarkOrigin;
+  benchmarkId: string;
+  commitSha?: string;
+  status: 'queued' | 'preparing' | 'needs_configuration' | 'running' | 'completed' | 'failed' | 'cancelled';
+  failureType?: 'application' | 'infrastructure';
+  buildStatus: 'passed' | 'failed' | 'skipped' | 'not_run';
+  buildOutput?: string;
+  scenarioRuns: BenchmarkScenarioRun[];
+  summary: BenchmarkRunSummary;
+  executionDurationMs: number;
+  startedAt: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
+export interface ProviderComparisonItem {
+  projectId: string;
+  projectName: string;
+  origin: BenchmarkOrigin;
+  runId: string;
+  runDate: string;
+  commitSha?: string;
+  buildSuccess: boolean;
+  functionalPassRate: number; // 0-100%
+  overallScore: number;       // 0-100
+  accessibilityScore: number; // 0-100
+  responsiveScore: number;    // 0-100
+  securityScore: number;      // 0-100
+  durationMs: number;
+  totalTests: number;
+  passedTests: number;
+  failedTests: number;
+  failureCategories: string[];
+  status: string;
+  failureType?: 'application' | 'infrastructure';
+}
+
+export interface BenchmarkDashboardStats {
+  totalProjects: number;
+  completedRuns: number;
+  failedRuns: number;
+  averageTestPassRate: number;
+  buildSuccessRate: number;
+  averageExecutionDurationMs: number;
+  mostCommonFailureCategories: Array<{ category: string; count: number }>;
+  providerComparisons: Array<{
+    origin: BenchmarkOrigin;
+    projectCount: number;
+    runsCount: number;
+    averageScore: number;
+    buildSuccessRate: number;
+    passRate: number;
+  }>;
+}
+

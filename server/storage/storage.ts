@@ -1,4 +1,17 @@
-import type { Agent, World, Scenario, Experiment, KnowledgeDocument, ExecutionEvent, PlatformConfig } from '../types.ts';
+import type {
+  Agent,
+  World,
+  Scenario,
+  Experiment,
+  KnowledgeDocument,
+  ExecutionEvent,
+  PlatformConfig,
+  BenchmarkProject,
+  BenchmarkDefinition,
+  BenchmarkRun,
+  BenchmarkDashboardStats,
+  ProviderComparisonItem,
+} from '../types.ts';
 
 export class DatabaseNotConfiguredError extends Error {
   constructor(message = 'MongoDB is not configured or reachable. Please set MONGODB_URI in your environment.') {
@@ -47,6 +60,28 @@ export interface IStorageStore {
   // Platform Config
   getPlatformConfig(): Promise<PlatformConfig>;
   savePlatformConfig(config: Partial<PlatformConfig>): Promise<PlatformConfig>;
+
+  // Benchmark Projects
+  getBenchmarkProjects(): Promise<BenchmarkProject[]>;
+  getBenchmarkProject(id: string): Promise<BenchmarkProject | null>;
+  saveBenchmarkProject(project: BenchmarkProject): Promise<BenchmarkProject>;
+  deleteBenchmarkProject(id: string): Promise<boolean>;
+
+  // Benchmark Definitions
+  getBenchmarkDefinitions(projectId?: string): Promise<BenchmarkDefinition[]>;
+  getBenchmarkDefinition(id: string): Promise<BenchmarkDefinition | null>;
+  saveBenchmarkDefinition(def: BenchmarkDefinition): Promise<BenchmarkDefinition>;
+  deleteBenchmarkDefinition(id: string): Promise<boolean>;
+
+  // Benchmark Runs
+  getBenchmarkRuns(projectId?: string): Promise<BenchmarkRun[]>;
+  getBenchmarkRun(id: string): Promise<BenchmarkRun | null>;
+  saveBenchmarkRun(run: BenchmarkRun): Promise<BenchmarkRun>;
+  deleteBenchmarkRun(id: string): Promise<boolean>;
+
+  // Benchmark Dashboard Stats & Comparisons
+  getBenchmarkStats(): Promise<BenchmarkDashboardStats>;
+  getProviderComparisons(projectIds?: string[]): Promise<ProviderComparisonItem[]>;
 
   // Seed check
   seedDefaultDataIfNeeded(): Promise<void>;

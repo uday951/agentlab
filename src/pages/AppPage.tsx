@@ -10,6 +10,8 @@ import { ResultsView } from '../components/app/ResultsView';
 import { KnowledgeView } from '../components/app/KnowledgeView';
 import { SettingsView } from '../components/app/SettingsView';
 import { InfrastructureView } from '../components/app/InfrastructureView';
+import { BenchmarkDashboard } from '../components/app/BenchmarkDashboard';
+import { ProviderComparisonView } from '../components/app/ProviderComparisonView';
 import { api, type SystemHealth } from '../lib/api';
 import { AlertTriangle, Database } from 'lucide-react';
 
@@ -66,6 +68,12 @@ export default function AppPage() {
     switch (active) {
       case 'overview':
         return <OverviewPanel onNavigate={handleNavigate} onRunQuickDemo={handleRunQuickDemo} />;
+      case 'benchmarks':
+      case 'coding-benchmarks':
+        return <BenchmarkDashboard onNavigateToCompare={() => setActive('compare')} />;
+      case 'compare':
+      case 'provider-comparison':
+        return <ProviderComparisonView onNavigateToDashboard={() => setActive('benchmarks')} />;
       case 'agents':
         return <AgentBuilder />;
       case 'worlds':

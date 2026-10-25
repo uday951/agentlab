@@ -6,3 +6,6 @@ export { ExperimentModel, type IExperimentDocument, type IScenarioRunSubdoc } fr
 export { ExecutionEventModel, type IExecutionEventDocument } from './ExecutionEvent.ts';
 export { EvaluationResultModel, type IEvaluationResultDocument } from './EvaluationResult.ts';
 export { PlatformConfigModel, type IPlatformConfigDocument } from './PlatformConfig.ts';
+export { BenchmarkProjectModel, type IBenchmarkProjectDocument } from './BenchmarkProject.ts';
+export { BenchmarkDefinitionModel, type IBenchmarkDefinitionDocument } from './BenchmarkDefinition.ts';
+export { BenchmarkRunModel, type IBenchmarkRunDocument } from './BenchmarkRun.ts';
