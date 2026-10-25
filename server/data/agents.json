@@ -1,0 +1,26 @@
+[
+  {
+    "id": "agent-sample-support",
+    "name": "SampleSupportAgent",
+    "description": "Deterministic customer support agent with RAG knowledge retrieval, multi-tool orchestration, and automated failure recovery.",
+    "connectionType": "builtin",
+    "model": "Deterministic Policy Planner v1.2",
+    "capabilities": [
+      "rag_retrieval",
+      "simulated_tools",
+      "failure_recovery",
+      "guardrail_enforcement"
+    ],
+    "tools": [
+      "lookup_order",
+      "retrieve_policy",
+      "check_refund_eligibility",
+      "process_refund",
+      "escalate_to_manager"
+    ],
+    "timeoutMs": 5000,
+    "status": "ready",
+    "createdAt": "2026-09-20T10:00:00.000Z",
+    "updatedAt": "2026-09-26T12:00:00.000Z"
+  }
+]
