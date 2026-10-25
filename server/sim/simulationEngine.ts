@@ -13,6 +13,7 @@ import type { AgentAdapter } from './adapters/AgentAdapter.ts';
 import { SampleSupportAgent } from './adapters/SampleSupportAgent.ts';
 import { ApiAgentAdapter } from './adapters/ApiAgentAdapter.ts';
 import { CliAgentAdapter } from './adapters/CliAgentAdapter.ts';
+import { ProjectImportAdapter } from './adapters/ProjectImportAdapter.ts';
 import type { IStorageStore } from '../storage/storage.ts';
 
 export type EventSubscriber = (event: { type: string; data: any }) => void;
@@ -70,7 +71,7 @@ export class SimulationEngine {
     if (!world) throw new Error(`World ${experiment.worldId} not found`);
 
     const allWorldScenarios = await this.storage.getScenariosForWorld(world.id);
-    const scenariosToRun = allWorldScenarios.filter(s =>
+    const scenariosToRun = allWorldScenarios.filter((s) =>
       experiment.scenarioIds.length === 0 || experiment.scenarioIds.includes(s.id)
     );
 
@@ -101,13 +102,16 @@ export class SimulationEngine {
       case 'cli':
         adapter = new CliAgentAdapter();
         break;
+      case 'import':
+        adapter = new ProjectImportAdapter();
+        break;
       case 'builtin':
       default:
         adapter = new SampleSupportAgent();
         break;
     }
 
-    // Initialize environment tools & RAG
+    // Initialize environment tools & RAG pipeline
     const toolRegistry = new ShopSphereToolRegistry(world.initialData?.orders || []);
     const ragPipeline = new LocalRAGPipeline(world.knowledgeDocuments || []);
 
@@ -131,8 +135,8 @@ export class SimulationEngine {
           scenario,
         });
 
-        // Small pacing delay for real-time live event streaming
-        await new Promise(r => setTimeout(r, 200));
+        // Pacing delay for live event streaming
+        await new Promise((r) => setTimeout(r, 180));
 
         const emitEvent = (
           evtData: Omit<ExecutionEvent, 'id' | 'experimentId' | 'scenarioId' | 'step' | 'timestamp'>
@@ -174,7 +178,7 @@ export class SimulationEngine {
           run: runResult,
         });
 
-        // Save progress incrementally
+        // Save progress incrementally to MongoDB
         await this.storage.saveExperiment(experiment);
       }
 
@@ -182,7 +186,7 @@ export class SimulationEngine {
       if (experiment.status !== 'cancelled') {
         experiment.status = 'completed';
         experiment.completedAt = new Date().toISOString();
-        experiment.results = this.calculateEvaluation(experimentId, runs);
+        experiment.results = this.calculateEvaluation(experimentId, runs, allEvents);
       }
     } catch (err: any) {
       experiment.status = 'failed';
@@ -204,9 +208,14 @@ export class SimulationEngine {
 
   /**
    * Deterministic Evaluation Calculation:
-   * Accurately aggregates task completion, policy compliance, tool accuracy, and failure reports.
+   * Accurately calculates task completion, correct outcome rate, policy compliance rate,
+   * tool-call success rate, duration, and categorized failure evidence.
    */
-  private calculateEvaluation(experimentId: string, runs: ScenarioRun[]): EvaluationResult {
+  public calculateEvaluation(
+    experimentId: string,
+    runs: ScenarioRun[],
+    allEvents: ExecutionEvent[] = []
+  ): EvaluationResult {
     const total = runs.length;
     if (total === 0) {
       return {
@@ -237,6 +246,19 @@ export class SimulationEngine {
     let incorrectDecisionCount = 0;
     const failuresList: EvaluationResult['failuresList'] = [];
 
+    // Calculate actual tool calls across all traces
+    let totalToolCalls = 0;
+    let successfulToolCalls = 0;
+
+    for (const evt of allEvents) {
+      if (evt.actionType === 'tool_call' || evt.actionType === 'tool_result') {
+        totalToolCalls++;
+        if (evt.status !== 'error') {
+          successfulToolCalls++;
+        }
+      }
+    }
+
     for (const run of runs) {
       const ev = run.evaluation;
       totalDuration += run.durationMs;
@@ -249,7 +271,9 @@ export class SimulationEngine {
 
       // Check for tool failures in execution trace
       const hasToolFailure = run.executionTrace.some(
-        e => e.actionType === 'failure_injected' || (e.actionType === 'tool_result' && e.status === 'error')
+        (e) =>
+          e.actionType === 'failure_injected' ||
+          (e.actionType === 'tool_result' && e.status === 'error')
       );
       if (hasToolFailure) toolFailureCount++;
 
@@ -264,10 +288,17 @@ export class SimulationEngine {
           failureCategory: ev.failureCategory || 'Behavioral Anomaly',
           explanation: ev.explanation || 'Outcome did not meet configured success criteria.',
           observedEvidence: ev.observedEvidence || [],
-          suggestedRemediation: ev.suggestedRemediation || 'Adjust agent prompt instructions and test again.',
+          suggestedRemediation:
+            ev.suggestedRemediation || 'Adjust agent prompt instructions and test again.',
         });
       }
     }
+
+    // Tool success rate: Percentage of tool invocations that succeeded
+    const toolSuccessRate =
+      totalToolCalls > 0
+        ? Math.round((successfulToolCalls / totalToolCalls) * 1000) / 10
+        : Math.round(((total - toolFailureCount) / total) * 1000) / 10;
 
     return {
       experimentId,
@@ -276,7 +307,7 @@ export class SimulationEngine {
       failedScenarios: total - passedCount,
       taskCompletionRate: Math.round((taskCompletedCount / total) * 1000) / 10,
       correctOutcomeRate: Math.round((correctOutcomeCount / total) * 1000) / 10,
-      toolSuccessRate: Math.round(((total - toolFailureCount) / total) * 1000) / 10,
+      toolSuccessRate,
       policyComplianceRate: Math.round((policyCompliantCount / total) * 1000) / 10,
       overallScore: Math.round(totalScore / total),
       toolFailureCount,

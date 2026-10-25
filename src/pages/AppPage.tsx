@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppSidebar } from '../components/app/AppSidebar';
 import { AppTopBar } from '../components/app/AppTopBar';
 import { OverviewPanel } from '../components/app/OverviewPanel';
@@ -9,13 +9,19 @@ import { SimulationCenter } from '../components/app/SimulationCenter';
 import { ResultsView } from '../components/app/ResultsView';
 import { KnowledgeView } from '../components/app/KnowledgeView';
 import { SettingsView } from '../components/app/SettingsView';
-import { api } from '../lib/api';
+import { api, type SystemHealth } from '../lib/api';
+import { AlertTriangle, Database } from 'lucide-react';
 
 export default function AppPage() {
   const [active, setActive] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeExperimentId, setActiveExperimentId] = useState<string | undefined>(undefined);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [health, setHealth] = useState<SystemHealth | null>(null);
+
+  useEffect(() => {
+    api.getHealth().then(setHealth).catch(() => {});
+  }, []);
 
   const handleRunQuickDemo = async () => {
     setIsSimulating(true);
@@ -110,6 +116,26 @@ export default function AppPage() {
 
       {/* Main Content View */}
       <main className="md:ml-64 pt-14 min-h-screen transition-all">
+        {/* Explicit Database Offline / Unconfigured Notice */}
+        {health && !health.database.connected && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs font-mono text-amber-900 flex items-center justify-between gap-3 sticky top-14 z-30 shadow-sm">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={15} className="text-amber-600 flex-shrink-0" />
+              <span>
+                <strong>MongoDB Database Offline / Unconfigured:</strong>{' '}
+                {health.database.error || 'MONGODB_URI not configured in .env'}. Persistent records require a running MongoDB instance. Silent mock fallback is disabled.
+              </span>
+            </div>
+            <button
+              onClick={() => setActive('settings')}
+              className="text-[11px] underline font-bold hover:text-amber-950 flex-shrink-0 cursor-pointer flex items-center gap-1"
+            >
+              <Database size={12} />
+              <span>Configure Database</span>
+            </button>
+          </div>
+        )}
+
         {renderContent()}
       </main>
     </div>

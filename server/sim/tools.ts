@@ -26,28 +26,39 @@ export interface ToolResult {
 
 export class ShopSphereToolRegistry {
   private orders: any[];
+  private dynamicInjectedFailures: Map<string, any> = new Map();
 
   constructor(initialOrders: any[] = []) {
     this.orders = initialOrders.length > 0 ? initialOrders : DEFAULT_ORDERS;
   }
 
+  public injectFailure(toolName: string, failure: any) {
+    this.dynamicInjectedFailures.set(toolName, { toolName, ...failure });
+  }
+
+  public clearInjectedFailures() {
+    this.dynamicInjectedFailures.clear();
+  }
+
   public async executeTool(
     toolName: string,
     params: Record<string, any>,
-    context: ToolExecutionContext
+    context: Partial<ToolExecutionContext> = {}
   ): Promise<ToolResult> {
     const startTime = Date.now();
+    const toolCallHistory = context.toolCallHistory || [];
+    const injectedFailure = context.injectedFailure || this.dynamicInjectedFailures.get(toolName);
 
     // Check if failure is injected for this tool in this scenario
-    if (context.injectedFailure && context.injectedFailure.toolName === toolName) {
-      const failMsg = context.injectedFailure.failureMessage || `Simulated failure: ${context.injectedFailure.failureType}`;
+    if (injectedFailure && injectedFailure.toolName === toolName) {
+      const failMsg = injectedFailure.failureMessage || `Simulated failure: ${injectedFailure.failureType}`;
       const failResult: ToolResult = {
         success: false,
         error: failMsg,
         injectedFailureTriggered: true,
       };
 
-      context.toolCallHistory.push({
+      toolCallHistory.push({
         toolName,
         params,
         result: failResult,
@@ -88,13 +99,15 @@ export class ShopSphereToolRegistry {
         };
     }
 
-    context.toolCallHistory.push({
-      toolName,
-      params,
-      result,
-      success: result.success,
-      durationMs: Date.now() - startTime,
-    });
+    if (context.toolCallHistory) {
+      context.toolCallHistory.push({
+        toolName,
+        params,
+        result,
+        success: result.success,
+        durationMs: Date.now() - startTime,
+      });
+    }
 
     return result;
   }

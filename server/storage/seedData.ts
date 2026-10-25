@@ -440,3 +440,8 @@ export const SEED_SCENARIOS: Scenario[] = [
     },
   },
 ];
+
+export const defaultSampleAgent = SEED_AGENT;
+export const defaultShopSphereWorld = SEED_WORLD;
+export const defaultScenarios = SEED_SCENARIOS;
+

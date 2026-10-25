@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Menu, Play, Sparkles } from 'lucide-react';
-import { api } from '../../lib/api';
+import { api, type SystemHealth } from '../../lib/api';
 
 interface TopBarProps {
   mobileMenuOpen: boolean;
@@ -18,12 +18,12 @@ export const AppTopBar = ({
   onNewExperiment,
   isSimulating,
 }: TopBarProps) => {
-  const [health, setHealth] = useState<{ status: string; storageMode: string } | null>(null);
+  const [health, setHealth] = useState<SystemHealth | null>(null);
 
   useEffect(() => {
     api.getHealth()
       .then(setHealth)
-      .catch(() => setHealth({ status: 'offline', storageMode: 'local_file' }));
+      .catch(() => {});
     const timer = setInterval(() => {
       api.getHealth().then(setHealth).catch(() => {});
     }, 15000);
@@ -50,9 +50,9 @@ export const AppTopBar = ({
           </span>
           <span className="text-copper/40">|</span>
           <span className="hidden md:flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block" />
+            <span className={`w-2 h-2 rounded-full ${health?.database?.connected ? 'bg-emerald-600' : 'bg-amber-600'} inline-block`} />
             <span className="text-[11px] text-burgundy/70">
-              Storage: <strong className="text-burgundy">{health?.storageMode === 'mongodb' ? 'MongoDB' : 'Local Persistence (JSON)'}</strong>
+              DB: <strong className="text-burgundy">{health?.database?.connected ? 'MongoDB Online' : 'MongoDB Offline'}</strong>
             </span>
           </span>
           <span className="text-copper/40 hidden md:inline">|</span>

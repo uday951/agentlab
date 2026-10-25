@@ -5,8 +5,16 @@ export interface Agent {
   connectionType: 'builtin' | 'api' | 'cli' | 'import';
   model: string;
   endpoint?: string;
-  headers?: Record<string, string>;
+  authType?: 'none' | 'bearer' | 'api_key' | 'basic';
+  authHeader?: string;
+  requestMapping?: string;
+  responseMapping?: string;
   cliCommand?: string;
+  workingDir?: string;
+  repoUrl?: string;
+  entrypoint?: string;
+  projectConfig?: Record<string, any>;
+  headers?: Record<string, string>;
   capabilities: string[];
   tools: string[];
   timeoutMs: number;
@@ -15,18 +23,28 @@ export interface Agent {
   updatedAt: string;
 }
 
+export interface KnowledgeDocument {
+  id: string;
+  worldId?: string;
+  title: string;
+  category: string;
+  content: string;
+  chunks?: {
+    id?: string;
+    chunkId?: string;
+    section: string;
+    text: string;
+    tokenCount?: number;
+  }[];
+}
+
 export interface World {
   id: string;
   name: string;
   industry: string;
   description: string;
   systemRules: string[];
-  knowledgeDocuments: {
-    id: string;
-    title: string;
-    category: string;
-    content: string;
-  }[];
+  knowledgeDocuments: KnowledgeDocument[];
   simulatedTools: {
     name: string;
     description: string;
@@ -163,19 +181,56 @@ export interface Experiment {
   completedAt?: string;
 }
 
+export interface SystemHealth {
+  status: 'ok' | 'degraded';
+  service: string;
+  version: string;
+  database: {
+    type: string;
+    connected: boolean;
+    error: string | null;
+  };
+  infrastructure: {
+    isolatedRunnerConfigured: boolean;
+    cliRunnerEnabled: boolean;
+    githubTokenConfigured: boolean;
+    llmProvider: string;
+  };
+  uptimeSeconds: number;
+  timestamp: string;
+}
+
 const API_BASE = '/api';
 
 export const api = {
-  // Health
-  getHealth: async () => {
-    const res = await fetch(`${API_BASE}/health`);
-    return res.json();
+  // Health & Telemetry
+  getHealth: async (): Promise<SystemHealth> => {
+    try {
+      const res = await fetch(`${API_BASE}/health`);
+      return await res.json();
+    } catch (e: any) {
+      return {
+        status: 'degraded',
+        service: 'AgentLab Simulation Backend',
+        version: '2.0.0-production',
+        database: { type: 'mongodb', connected: false, error: 'Cannot connect to backend API server.' },
+        infrastructure: {
+          isolatedRunnerConfigured: false,
+          cliRunnerEnabled: false,
+          githubTokenConfigured: false,
+          llmProvider: 'builtin-deterministic',
+        },
+        uptimeSeconds: 0,
+        timestamp: new Date().toISOString(),
+      };
+    }
   },
 
   // Agents
   getAgents: async (): Promise<Agent[]> => {
     const res = await fetch(`${API_BASE}/agents`);
     const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to fetch agents');
     return json.data || [];
   },
 
@@ -186,30 +241,47 @@ export const api = {
       body: JSON.stringify(data),
     });
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || 'Failed to create agent');
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to create agent');
     return json.data;
   },
 
   testAgent: async (id: string) => {
     const res = await fetch(`${API_BASE}/agents/${id}/test`, { method: 'POST' });
-    return res.json();
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Agent connection test failed');
+    return json;
+  },
+
+  inspectRepo: async (repoUrl: string) => {
+    const res = await fetch(`${API_BASE}/agents/inspect-repo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repoUrl }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Repository inspection failed');
+    return json;
   },
 
   deleteAgent: async (id: string) => {
     const res = await fetch(`${API_BASE}/agents/${id}`, { method: 'DELETE' });
-    return res.json();
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to delete agent');
+    return json;
   },
 
   // Worlds
   getWorlds: async (): Promise<World[]> => {
     const res = await fetch(`${API_BASE}/worlds`);
     const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to fetch worlds');
     return json.data || [];
   },
 
   getWorld: async (id: string): Promise<World> => {
     const res = await fetch(`${API_BASE}/worlds/${id}`);
     const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to fetch world');
     return json.data;
   },
 
@@ -220,12 +292,58 @@ export const api = {
       body: JSON.stringify(data),
     });
     const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to update world');
     return json.data;
+  },
+
+  // Knowledge Documents & Local RAG
+  getKnowledgeDocuments: async (worldId: string): Promise<KnowledgeDocument[]> => {
+    const res = await fetch(`${API_BASE}/worlds/${worldId}/documents`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to fetch knowledge documents');
+    return json.data || [];
+  },
+
+  createKnowledgeDocument: async (
+    worldId: string,
+    data: { title: string; category: string; content: string }
+  ): Promise<KnowledgeDocument> => {
+    const res = await fetch(`${API_BASE}/worlds/${worldId}/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to create knowledge document');
+    return json.data;
+  },
+
+  deleteKnowledgeDocument: async (worldId: string, docId: string) => {
+    const res = await fetch(`${API_BASE}/worlds/${worldId}/documents/${docId}`, { method: 'DELETE' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to delete knowledge document');
+    return json;
+  },
+
+  searchKnowledge: async (
+    worldId: string,
+    query: string,
+    topK = 3
+  ): Promise<{ data: any[]; retriever: string; queriedDocumentsCount: number }> => {
+    const res = await fetch(`${API_BASE}/worlds/${worldId}/documents/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, topK }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Knowledge search failed');
+    return json;
   },
 
   getScenarios: async (worldId: string): Promise<Scenario[]> => {
     const res = await fetch(`${API_BASE}/worlds/${worldId}/scenarios`);
     const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to fetch scenarios');
     return json.data || [];
   },
 
@@ -233,12 +351,14 @@ export const api = {
   getExperiments: async (): Promise<Experiment[]> => {
     const res = await fetch(`${API_BASE}/experiments`);
     const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to fetch experiments');
     return json.data || [];
   },
 
   getExperiment: async (id: string): Promise<Experiment> => {
     const res = await fetch(`${API_BASE}/experiments/${id}`);
     const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to fetch experiment');
     return json.data;
   },
 
@@ -254,24 +374,30 @@ export const api = {
       body: JSON.stringify(data),
     });
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || 'Failed to create experiment');
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to create experiment');
     return json.data;
   },
 
   runExperiment: async (id: string) => {
     const res = await fetch(`${API_BASE}/experiments/${id}/run`, { method: 'POST' });
-    return res.json();
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to run experiment');
+    return json;
   },
 
   cancelExperiment: async (id: string) => {
     const res = await fetch(`${API_BASE}/experiments/${id}/cancel`, { method: 'POST' });
-    return res.json();
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to cancel experiment');
+    return json;
   },
 
   // 1-Click College Review Demo
   runQuickDemo: async (): Promise<{ success: boolean; experiment: Experiment }> => {
     const res = await fetch(`${API_BASE}/demo/run-quick`, { method: 'POST' });
-    return res.json();
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || json.error || 'Failed to initiate quick demo');
+    return json;
   },
 
   // Export URLs
