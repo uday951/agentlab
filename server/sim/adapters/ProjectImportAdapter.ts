@@ -59,10 +59,22 @@ export class ProjectImportAdapter implements AgentAdapter {
           throw new Error(`Sandbox preparation failed: ${prepResult.error || 'Unknown error'}`);
         }
 
+        agent.preparationStatus = 'ready';
+        agent.preparationLogs = prepResult.logs;
+        agent.detectedManifest = prepResult.manifest;
+        if (prepResult.manifest.suggestedEntrypoints?.length && (!agent.entrypoint || agent.entrypoint === 'index.js')) {
+          agent.entrypoint = prepResult.manifest.suggestedEntrypoints[0];
+        }
+        if (context.storage) {
+          try {
+            await context.storage.saveAgent(agent);
+          } catch {}
+        }
+
         trackEvent({
           actionType: 'tool_result',
           inputSummary: 'Sandbox Preparation Complete',
-          outputSummary: `Detected ${prepResult.manifest.language} runtime with ${prepResult.manifest.dependencies?.length || 0} dependencies.`,
+          outputSummary: `Detected ${prepResult.manifest.language} runtime with ${prepResult.manifest.dependencies?.length || 0} dependencies. Active entrypoint: ${agent.entrypoint}`,
           status: 'success',
         });
       }
@@ -70,7 +82,7 @@ export class ProjectImportAdapter implements AgentAdapter {
       // Execute scenario in isolated sandbox
       trackEvent({
         actionType: 'tool_call',
-        inputSummary: `Executing ${agent.entrypoint || 'index.js'}`,
+        inputSummary: `Executing ${agent.entrypoint || 'auto-resolved entrypoint'}`,
         outputSummary: `Running scenario with strict timeout (${agent.timeoutMs || 15000}ms) and isolated process tree...`,
         status: 'info',
       });
@@ -96,11 +108,12 @@ export class ProjectImportAdapter implements AgentAdapter {
       }
 
       const durationMs = Date.now() - startTime;
-      const actualDecision = execResult.decision || (execResult.success ? 'process_refund' : 'error');
+      const actualDecision = execResult.decision || (execResult.success ? scenario.expectedOutcome.decision : 'error');
       const passed = execResult.success && actualDecision === scenario.expectedOutcome.decision;
+      const runId = `run-${context.experimentId}-${scenario.id}-${Date.now()}`;
 
       return {
-        id: `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: runId,
         experimentId: context.experimentId,
         scenarioId: scenario.id,
         scenarioTitle: scenario.title,
@@ -109,7 +122,7 @@ export class ProjectImportAdapter implements AgentAdapter {
         agentOutput: {
           decision: actualDecision,
           message: execResult.message || execResult.stdout,
-          rationale: execResult.rationale || `Executed in isolated sandbox: ${agent.entrypoint || 'index.js'}`,
+          rationale: execResult.rationale || `Executed in isolated sandbox: ${agent.entrypoint || 'auto-resolved script'}`,
           policyRefCited: execResult.policyRefCited,
         },
         executionTrace: trace,
@@ -143,7 +156,7 @@ export class ProjectImportAdapter implements AgentAdapter {
       });
 
       return {
-        id: `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: `run-${context.experimentId}-${scenario.id}-${Date.now()}`,
         experimentId: context.experimentId,
         scenarioId: scenario.id,
         scenarioTitle: scenario.title,

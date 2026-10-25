@@ -11,6 +11,7 @@ export interface AgentExecutionContext {
   rag: LocalRAGPipeline;
   stepCounter: number;
   emitEvent: (event: Omit<ExecutionEvent, 'id' | 'experimentId' | 'scenarioId' | 'step' | 'timestamp'>) => ExecutionEvent;
+  storage?: any;
 }
 
 export interface AgentAdapter {

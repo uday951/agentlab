@@ -59,7 +59,10 @@ export const SimulationCenter = ({
     setIsLive(true);
     const es = api.createEventStream(expId, (message) => {
       if (message.type === 'event') {
-        setEvents((prev) => [...prev, message.data]);
+        setEvents((prev) => {
+          if (prev.some((e) => e.id === message.data.id)) return prev;
+          return [...prev, message.data];
+        });
         scrollToBottom();
       } else if (message.type === 'scenario_started') {
         setCurrentScenarioIndex(message.data.index);

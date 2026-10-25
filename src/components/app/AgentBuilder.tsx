@@ -660,9 +660,28 @@ export const AgentBuilder = () => {
                         type="text"
                         value={entrypoint}
                         onChange={(e) => setEntrypoint(e.target.value)}
-                        placeholder="agent.py or index.js"
+                        placeholder="backend/server.js or index.js"
                         className="w-full border border-copper/25 p-2 rounded bg-white font-mono"
                       />
+                      {(repoInspection?.suggestedEntrypoints || editingAgent?.detectedManifest?.suggestedEntrypoints)?.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1 items-center">
+                          <span className="text-[9px] text-zinc-500 font-mono">Suggested:</span>
+                          {(repoInspection?.suggestedEntrypoints || editingAgent?.detectedManifest?.suggestedEntrypoints).map((ep: string) => (
+                            <button
+                              key={ep}
+                              type="button"
+                              onClick={() => setEntrypoint(ep)}
+                              className={`text-[9px] font-mono px-1.5 py-0.5 rounded border cursor-pointer ${
+                                entrypoint === ep
+                                  ? 'bg-copper text-ivory border-copper font-bold'
+                                  : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border-zinc-300'
+                              }`}
+                            >
+                              {ep}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 

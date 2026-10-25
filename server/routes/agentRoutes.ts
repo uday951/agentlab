@@ -142,16 +142,66 @@ export function createAgentRouter(storage: IStorageStore): Router {
 
       const repoData: any = await ghRes.json();
 
+      // Inspect repository tree for real entrypoint files
+      let verifiedEntrypoints: string[] = [];
+      try {
+        const treeRes = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/git/trees/${repoData.default_branch}?recursive=1`,
+          { headers }
+        );
+        if (treeRes.ok) {
+          const treeData: any = await treeRes.json();
+          if (Array.isArray(treeData.tree)) {
+            const blobPaths = treeData.tree
+              .filter((item: any) => item.type === 'blob')
+              .map((item: any) => item.path);
+
+            const priorityCandidates = [
+              'backend/server.js',
+              'backend/index.js',
+              'backend/app.js',
+              'backend/main.js',
+              'server/server.js',
+              'server/index.js',
+              'server.js',
+              'index.js',
+              'app.js',
+              'main.js',
+              'src/index.js',
+              'src/server.js',
+              'src/main.js',
+              'agent.js',
+              'agent.py',
+              'main.py',
+              'backend/agent.py',
+              'src/agent.py',
+            ];
+
+            verifiedEntrypoints = priorityCandidates.filter((c) => blobPaths.includes(c));
+
+            // Also check for any package.json main entry
+            const backendPkg = blobPaths.find((p: string) => p.endsWith('package.json'));
+            if (backendPkg && verifiedEntrypoints.length === 0) {
+              verifiedEntrypoints.push(backendPkg.replace('package.json', 'server.js'));
+            }
+          }
+        }
+      } catch {}
+
+      if (verifiedEntrypoints.length === 0) {
+        verifiedEntrypoints =
+          repoData.language === 'Python'
+            ? ['agent.py', 'main.py', 'src/agent.py']
+            : ['server.js', 'backend/server.js', 'index.js', 'src/index.js'];
+      }
+
       res.json({
         success: true,
         data: {
           fullName: repoData.full_name,
           defaultBranch: repoData.default_branch,
           language: repoData.language,
-          suggestedEntrypoints:
-            repoData.language === 'Python'
-              ? ['agent.py', 'main.py', 'src/agent.py']
-              : ['index.js', 'src/index.js', 'main.js'],
+          suggestedEntrypoints: verifiedEntrypoints,
           requiresIsolatedRunner: true,
           isolatedRunnerConfigured: !!process.env.AGENT_RUNNER_URL,
         },
@@ -327,8 +377,17 @@ export function createAgentRouter(storage: IStorageStore): Router {
       agent.preparationStatus = prepResult.success ? 'ready' : 'failed';
       agent.preparationLogs = prepResult.logs;
       agent.detectedManifest = prepResult.manifest;
-      if (prepResult.manifest.suggestedEntrypoints?.length && !agent.entrypoint) {
-        agent.entrypoint = prepResult.manifest.suggestedEntrypoints[0];
+      if (prepResult.manifest.suggestedEntrypoints?.length) {
+        const codeDir = path.join(runnerService.getSandboxDir(agent.id), 'code');
+        const currentPath = agent.entrypoint ? path.join(codeDir, agent.entrypoint) : '';
+        let currentExists = false;
+        try {
+          currentExists = currentPath.length > 0 && fs.existsSync(currentPath) && fs.statSync(currentPath).isFile();
+        } catch {}
+
+        if (!currentExists || agent.entrypoint === 'index.js') {
+          agent.entrypoint = prepResult.manifest.suggestedEntrypoints[0];
+        }
       }
       if (prepResult.runtime && prepResult.runtime !== 'unknown') {
         agent.runtime = prepResult.runtime;

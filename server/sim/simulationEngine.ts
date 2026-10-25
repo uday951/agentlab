@@ -65,6 +65,11 @@ export class SimulationEngine {
     const experiment = await this.storage.getExperiment(experimentId);
     if (!experiment) throw new Error(`Experiment ${experimentId} not found`);
 
+    if (this.runningExperiments.has(experimentId)) {
+      console.warn(`[SimulationEngine] Experiment ${experimentId} is already executing. Preventing duplicate concurrent run.`);
+      return experiment;
+    }
+
     const agent = await this.storage.getAgent(experiment.agentId);
     if (!agent) throw new Error(`Agent ${experiment.agentId} not found`);
 
@@ -158,7 +163,7 @@ export class SimulationEngine {
         ): ExecutionEvent => {
           stepCounter++;
           const fullEvent: ExecutionEvent = {
-            id: `evt-${Date.now()}-${stepCounter}`,
+            id: `evt-${experimentId}-${scenario.id}-${stepCounter}-${Date.now()}`,
             experimentId,
             scenarioId: scenario.id,
             step: stepCounter,
@@ -180,6 +185,7 @@ export class SimulationEngine {
           rag: ragPipeline,
           stepCounter,
           emitEvent,
+          storage: this.storage,
         });
 
         runs.push(runResult);
