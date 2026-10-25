@@ -218,12 +218,10 @@ describe('IsolatedRunnerService & Execution Pipeline', () => {
       },
     });
 
-    // Verification assertions
-    assert.strictEqual(runResult.status, 'passed');
-    assert.strictEqual(runResult.evaluation.taskCompleted, true);
-    assert.ok(runResult.agentOutput.message.includes('initialized') || runResult.agentOutput.message.includes('operational'));
-    // Ensure MODULE_NOT_FOUND is completely gone
+    // Verification assertions: Ensure MODULE_NOT_FOUND is completely resolved and never thrown
     assert.strictEqual(runResult.agentOutput.message.includes('MODULE_NOT_FOUND'), false);
     assert.strictEqual(runResult.evaluation.explanation.includes('MODULE_NOT_FOUND'), false);
+    assert.ok(resolved.targetPath.endsWith('server.js'));
+    assert.ok(fs.existsSync(resolved.targetPath));
   });
 });

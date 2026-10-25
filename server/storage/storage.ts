@@ -11,6 +11,8 @@ import type {
   BenchmarkRun,
   BenchmarkDashboardStats,
   ProviderComparisonItem,
+  ProviderConnection,
+  GenerationJob,
 } from '../types.ts';
 
 export class DatabaseNotConfiguredError extends Error {
@@ -82,6 +84,17 @@ export interface IStorageStore {
   // Benchmark Dashboard Stats & Comparisons
   getBenchmarkStats(): Promise<BenchmarkDashboardStats>;
   getProviderComparisons(projectIds?: string[]): Promise<ProviderComparisonItem[]>;
+
+  // AI Platform Provider Connections (Lovable, Bolt, Replit, Emergent)
+  getProviderConnections(): Promise<ProviderConnection[]>;
+  getProviderConnection(provider: string): Promise<ProviderConnection | null>;
+  saveProviderConnection(connection: ProviderConnection): Promise<ProviderConnection>;
+  deleteProviderConnection(provider: string): Promise<boolean>;
+
+  // Generation Jobs (Direct Prompt-to-Benchmark)
+  getGenerationJobs(): Promise<GenerationJob[]>;
+  getGenerationJob(id: string): Promise<GenerationJob | null>;
+  saveGenerationJob(job: GenerationJob): Promise<GenerationJob>;
 
   // Seed check
   seedDefaultDataIfNeeded(): Promise<void>;

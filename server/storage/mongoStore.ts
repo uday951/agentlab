@@ -14,6 +14,8 @@ import type {
   BenchmarkDashboardStats,
   ProviderComparisonItem,
   BenchmarkOrigin,
+  ProviderConnection,
+  GenerationJob,
 } from '../types.ts';
 import {
   AgentModel,
@@ -27,6 +29,8 @@ import {
   BenchmarkProjectModel,
   BenchmarkDefinitionModel,
   BenchmarkRunModel,
+  ProviderConnectionModel,
+  GenerationJobModel,
 } from '../models/index.ts';
 import { defaultShopSphereWorld, defaultScenarios, defaultSampleAgent, defaultDeepSeekAgent } from './seedData.ts';
 
@@ -619,6 +623,58 @@ export class MongoStore implements IStorageStore {
     return items;
   }
 
+  // --- Provider Connections ---
+  public async getProviderConnections(): Promise<ProviderConnection[]> {
+    this.assertConnected();
+    const docs = await ProviderConnectionModel.find({}).lean();
+    return docs.map(this.mapProviderConnection);
+  }
+
+  public async getProviderConnection(provider: string): Promise<ProviderConnection | null> {
+    this.assertConnected();
+    const doc = await ProviderConnectionModel.findOne({ provider }).lean();
+    return doc ? this.mapProviderConnection(doc) : null;
+  }
+
+  public async saveProviderConnection(conn: ProviderConnection): Promise<ProviderConnection> {
+    this.assertConnected();
+    const updated = await ProviderConnectionModel.findOneAndUpdate(
+      { provider: conn.provider },
+      { $set: conn },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    ).lean();
+    return this.mapProviderConnection(updated);
+  }
+
+  public async deleteProviderConnection(provider: string): Promise<boolean> {
+    this.assertConnected();
+    const res = await ProviderConnectionModel.deleteOne({ provider });
+    return (res.deletedCount || 0) > 0;
+  }
+
+  // --- Generation Jobs ---
+  public async getGenerationJobs(): Promise<GenerationJob[]> {
+    this.assertConnected();
+    const docs = await GenerationJobModel.find({}).sort({ createdAt: -1 }).lean();
+    return docs.map(this.mapGenerationJob);
+  }
+
+  public async getGenerationJob(id: string): Promise<GenerationJob | null> {
+    this.assertConnected();
+    const doc = await GenerationJobModel.findOne({ id }).lean();
+    return doc ? this.mapGenerationJob(doc) : null;
+  }
+
+  public async saveGenerationJob(job: GenerationJob): Promise<GenerationJob> {
+    this.assertConnected();
+    const updated = await GenerationJobModel.findOneAndUpdate(
+      { id: job.id },
+      { $set: job },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    ).lean();
+    return this.mapGenerationJob(updated);
+  }
+
   // --- Mapping Helpers ---
   private mapAgent(raw: any): Agent {
     return {
@@ -843,6 +899,53 @@ export class MongoStore implements IStorageStore {
       startedAt: raw.startedAt ? new Date(raw.startedAt).toISOString() : new Date().toISOString(),
       completedAt: raw.completedAt ? new Date(raw.completedAt).toISOString() : undefined,
       createdAt: raw.createdAt ? new Date(raw.createdAt).toISOString() : new Date().toISOString(),
+    };
+  }
+
+  private mapProviderConnection(raw: any): ProviderConnection {
+    return {
+      provider: raw.provider,
+      name: raw.name,
+      status: raw.status || 'disconnected',
+      authType: raw.authType || 'oauth',
+      accountEmail: raw.accountEmail,
+      accountName: raw.accountName,
+      workspaceId: raw.workspaceId,
+      workspaceName: raw.workspaceName,
+      serverUrl: raw.serverUrl,
+      accessToken: raw.accessToken, // Kept in memory/server-side only
+      refreshToken: raw.refreshToken,
+      tokenExpiresAt: raw.tokenExpiresAt,
+      supportedOperations: raw.supportedOperations || [],
+      discoveredTools: raw.discoveredTools || [],
+      directPromptGeneration: !!raw.directPromptGeneration,
+      githubExportSupported: raw.githubExportSupported !== false,
+      zipImportSupported: raw.zipImportSupported !== false,
+      guidanceNotes: raw.guidanceNotes,
+      lastCheckedAt: raw.lastCheckedAt ? new Date(raw.lastCheckedAt).toISOString() : new Date().toISOString(),
+      updatedAt: raw.updatedAt ? new Date(raw.updatedAt).toISOString() : new Date().toISOString(),
+    };
+  }
+
+  private mapGenerationJob(raw: any): GenerationJob {
+    return {
+      id: raw.id,
+      provider: raw.provider,
+      projectName: raw.projectName,
+      userPrompt: raw.userPrompt,
+      benchmarkCategory: raw.benchmarkCategory || 'auto',
+      inferredBenchmarkSpec: raw.inferredBenchmarkSpec,
+      creditWarningAccepted: !!raw.creditWarningAccepted,
+      status: raw.status || 'draft',
+      failureReason: raw.failureReason,
+      errorMessage: raw.errorMessage,
+      providerProjectId: raw.providerProjectId,
+      providerJobId: raw.providerJobId,
+      providerProjectUrl: raw.providerProjectUrl,
+      resultProjectId: raw.resultProjectId,
+      logs: raw.logs || [],
+      createdAt: raw.createdAt ? new Date(raw.createdAt).toISOString() : new Date().toISOString(),
+      completedAt: raw.completedAt ? new Date(raw.completedAt).toISOString() : undefined,
     };
   }
 }

@@ -651,6 +651,100 @@ export const api = {
     if (!res.ok) throw new Error(json.error || 'Failed to fetch provider comparisons');
     return json.comparisons;
   },
+
+  // --- Direct Provider & Generation APIs ---
+  getProviders: async (): Promise<ProviderConnection[]> => {
+    const res = await fetch(`${API_BASE}/benchmark/providers`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch providers');
+    return json.providers;
+  },
+
+  getProvider: async (provider: string): Promise<ProviderConnection> => {
+    const res = await fetch(`${API_BASE}/benchmark/providers/${provider}`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch provider details');
+    return json.provider;
+  },
+
+  getLovableAuthUrl: async (workspaceId?: string): Promise<{ authUrl: string; state: string }> => {
+    const url = workspaceId
+      ? `${API_BASE}/benchmark/providers/lovable/oauth/authorize?workspaceId=${encodeURIComponent(workspaceId)}`
+      : `${API_BASE}/benchmark/providers/lovable/oauth/authorize`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to get authorization URL');
+    return json;
+  },
+
+  connectProvider: async (provider: string, data: { apiKey?: string; accessToken?: string; workspaceId?: string; authCode?: string; state?: string }): Promise<ProviderConnection> => {
+    const res = await fetch(`${API_BASE}/benchmark/providers/${provider}/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to connect provider');
+    return json.connection;
+  },
+
+  disconnectProvider: async (provider: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/benchmark/providers/${provider}/disconnect`, {
+      method: 'POST',
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to disconnect provider');
+  },
+
+  getProviderWorkspaces: async (provider: string): Promise<Array<{ id: string; name: string }>> => {
+    const res = await fetch(`${API_BASE}/benchmark/providers/${provider}/workspaces`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch workspaces');
+    return json.workspaces;
+  },
+
+  previewGeneration: async (data: { provider?: BenchmarkOrigin; prompt: string; name?: string; category?: string }): Promise<{ inferredSpec: any }> => {
+    const res = await fetch(`${API_BASE}/benchmark/generate/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to generate preview');
+    return json;
+  },
+
+  startGeneration: async (data: {
+    provider?: BenchmarkOrigin;
+    name?: string;
+    prompt: string;
+    workspaceId?: string;
+    benchmarkCategory?: string;
+    creditWarningAccepted: boolean;
+  }): Promise<GenerationJob> => {
+    const res = await fetch(`${API_BASE}/benchmark/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to start generation job');
+    return json.job;
+  },
+
+  getGenerationJob: async (jobId: string): Promise<GenerationJob> => {
+    const res = await fetch(`${API_BASE}/benchmark/generate/${jobId}`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to get generation job status');
+    return json.job;
+  },
+
+  getGenerationJobs: async (): Promise<GenerationJob[]> => {
+    const res = await fetch(`${API_BASE}/benchmark/generate`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Failed to get generation jobs');
+    return json.jobs;
+  },
 };
 
 // ==========================================
@@ -830,4 +924,62 @@ export interface BenchmarkDashboardStats {
     buildSuccessRate: number;
     passRate: number;
   }>;
+}
+
+export interface McpDiscoveredTool {
+  name: string;
+  description: string;
+  inputSchema?: any;
+  creditCostNotice?: string;
+}
+
+export type ProviderConnectionStatus = 'disconnected' | 'connected' | 'error' | 'not_supported';
+
+export interface ProviderConnection {
+  id: string;
+  provider: BenchmarkOrigin;
+  name: string;
+  status: ProviderConnectionStatus;
+  authMethod: 'oauth' | 'api_key' | 'git_sync' | 'export_import';
+  endpoint?: string;
+  accountEmail?: string;
+  workspaceName?: string;
+  discoveredTools?: McpDiscoveredTool[];
+  supportsDirectGeneration: boolean;
+  supportsExport: boolean;
+  syncStrategyNotes?: string;
+  connectedAt?: string;
+  lastSyncedAt?: string;
+  lastError?: string;
+  creditNotice?: string;
+}
+
+export type GenerationJobStatus =
+  | 'pending'
+  | 'prompt_approved'
+  | 'submitting'
+  | 'generating'
+  | 'retrieving_code'
+  | 'preparing_environment'
+  | 'executing_benchmark'
+  | 'completed'
+  | 'failed';
+
+export interface GenerationJob {
+  id: string;
+  provider: BenchmarkOrigin;
+  projectName: string;
+  userPrompt: string;
+  benchmarkCategory?: string;
+  creditWarningAccepted: boolean;
+  status: GenerationJobStatus;
+  providerProjectId?: string;
+  providerProjectUrl?: string;
+  createdProjectId?: string;
+  benchmarkRunId?: string;
+  failureReason?: string;
+  failureType?: 'quota' | 'auth' | 'generation' | 'retrieval' | 'preparation' | 'testing' | 'other';
+  logs: string[];
+  createdAt: string;
+  completedAt?: string;
 }

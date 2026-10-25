@@ -9,3 +9,5 @@ export { PlatformConfigModel, type IPlatformConfigDocument } from './PlatformCon
 export { BenchmarkProjectModel, type IBenchmarkProjectDocument } from './BenchmarkProject.ts';
 export { BenchmarkDefinitionModel, type IBenchmarkDefinitionDocument } from './BenchmarkDefinition.ts';
 export { BenchmarkRunModel, type IBenchmarkRunDocument } from './BenchmarkRun.ts';
+export { ProviderConnectionModel, type IProviderConnectionDocument } from './ProviderConnection.ts';
+export { GenerationJobModel, type IGenerationJobDocument } from './GenerationJob.ts';

@@ -454,3 +454,80 @@ export interface BenchmarkDashboardStats {
   }>;
 }
 
+// ==========================================
+// AI Platform Direct Connection & MCP Types
+// ==========================================
+
+export interface McpDiscoveredTool {
+  name: string;
+  description: string;
+  inputSchema?: Record<string, any>;
+}
+
+export type ProviderConnectionStatus = 'connected' | 'disconnected' | 'expired' | 'needs_configuration';
+
+export interface ProviderConnection {
+  provider: 'lovable' | 'bolt' | 'replit' | 'emergent';
+  name: string;
+  status: ProviderConnectionStatus;
+  authType: 'oauth' | 'api_key' | 'unsupported_direct';
+  accountEmail?: string;
+  accountName?: string;
+  workspaceId?: string;
+  workspaceName?: string;
+  serverUrl?: string; // e.g. https://mcp.lovable.dev
+  accessToken?: string; // Server-side only (never sent to client)
+  refreshToken?: string; // Server-side only
+  tokenExpiresAt?: string;
+  supportedOperations: string[];
+  discoveredTools: McpDiscoveredTool[];
+  directPromptGeneration: boolean;
+  githubExportSupported: boolean;
+  zipImportSupported: boolean;
+  guidanceNotes?: string;
+  lastCheckedAt: string;
+  updatedAt: string;
+}
+
+export type GenerationJobStatus =
+  | 'draft'
+  | 'prompt_approved'
+  | 'submitting'
+  | 'generating'
+  | 'retrieving_code'
+  | 'completed'
+  | 'failed';
+
+export type GenerationFailureReason =
+  | 'provider_generation_failure'
+  | 'quota_exceeded'
+  | 'auth_error'
+  | 'retrieval_failure'
+  | 'preparation_failure';
+
+export interface GenerationJob {
+  id: string;
+  provider: 'lovable' | 'bolt' | 'replit' | 'emergent';
+  projectName: string;
+  userPrompt: string;
+  benchmarkCategory: string;
+  inferredBenchmarkSpec?: {
+    category: string;
+    description: string;
+    requiredCapabilities: string[];
+    suggestedScenarios: string[];
+  };
+  creditWarningAccepted: boolean;
+  status: GenerationJobStatus;
+  failureReason?: GenerationFailureReason;
+  errorMessage?: string;
+  providerProjectId?: string;
+  providerJobId?: string;
+  providerProjectUrl?: string;
+  resultProjectId?: string; // Linked to BenchmarkProject
+  logs: string[];
+  createdAt: string;
+  completedAt?: string;
+}
+
+
