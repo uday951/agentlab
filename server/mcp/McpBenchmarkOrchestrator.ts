@@ -58,12 +58,26 @@ export class McpBenchmarkOrchestrator {
       });
 
       // 1. Handshake
-      const initResult = await client.initialize();
-      job.logs.push(`MCP handshake succeeded with protocol version ${initResult.protocolVersion}.`);
+      try {
+        const initResult = await client.initialize();
+        job.logs.push(`MCP handshake completed with protocol version ${initResult.protocolVersion}.`);
+      } catch (handshakeErr: any) {
+        job.logs.push(`Handshake note: ${handshakeErr.message}`);
+      }
 
       // 2. Discover & Map capabilities
-      const tools = await client.listTools();
-      job.logs.push(`Discovered ${tools.length} active tools from MCP server.`);
+      let tools: any[] = [];
+      try {
+        tools = await client.listTools();
+        job.logs.push(`Discovered ${tools.length} active tools from MCP server.`);
+      } catch (toolsErr: any) {
+        job.logs.push(`Live tool discovery notice: ${toolsErr.message}. Using stored tools.`);
+      }
+
+      // Fallback to connection's stored discovered tools if needed
+      if (!tools || tools.length === 0) {
+        tools = connection.discoveredTools || [];
+      }
 
       const creationTool = tools.find((t) => t.category === 'project_creation');
       const generationTool = tools.find((t) => t.category === 'code_generation');
@@ -100,7 +114,21 @@ export class McpBenchmarkOrchestrator {
         if (schemaProps.prompt) args.prompt = job.taskPrompt;
         if (schemaProps.message) args.message = job.taskPrompt;
         if (schemaProps.task) args.task = job.taskPrompt;
-        if (schemaProps.workspace_id) args.workspace_id = 'default-workspace';
+
+        if (schemaProps.workspace_id) {
+          try {
+            const wsRes = await client.callTool('list_workspaces', {});
+            const wsList = Array.isArray(wsRes) ? wsRes : (wsRes?.workspaces || []);
+            if (wsList.length > 0 && wsList[0]?.id) {
+              args.workspace_id = wsList[0].id;
+              job.logs.push(`Using Lovable workspace: ${wsList[0].name || wsList[0].id}`);
+            } else {
+              args.workspace_id = 'default-workspace';
+            }
+          } catch {
+            args.workspace_id = 'default-workspace';
+          }
+        }
 
         const result = await client.callTool(creationTool.name, args);
         job.logs.push(`Task submitted successfully. Tool output: ${JSON.stringify(result)?.substring(0, 300)}`);

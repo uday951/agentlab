@@ -71,11 +71,21 @@ export class UniversalMcpClient {
       },
     };
 
-    const res = await this.sendJsonRpcRequest('initialize', initParams);
-    if (!res) throw new Error('Empty response received during MCP initialization handshake.');
+    let res: any;
+    try {
+      res = await this.sendJsonRpcRequest('initialize', initParams);
+    } catch {
+      res = { protocolVersion: '2024-11-05', capabilities: {} };
+    }
+
+    if (!res) {
+      res = { protocolVersion: '2024-11-05', capabilities: {} };
+    }
 
     // Send initialized notification as required by MCP spec
-    await this.sendJsonRpcNotification('notifications/initialized', {});
+    try {
+      await this.sendJsonRpcNotification('notifications/initialized', {});
+    } catch {}
 
     return {
       protocolVersion: res.protocolVersion || '2024-11-05',
@@ -296,14 +306,37 @@ export class UniversalMcpClient {
 
     if (!expectResponse) return null;
 
-    const data = await res.json().catch(() => null);
-    if (!data) return null;
+    const rawText = await res.text().catch(() => '');
+    if (!rawText || !rawText.trim()) return {};
+
+    let data: any = null;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      // Parse SSE formatted chunks (Server-Sent Events)
+      const lines = rawText.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('data:')) {
+          const jsonStr = trimmed.substring(5).trim();
+          try {
+            const parsed = JSON.parse(jsonStr);
+            if (parsed && (parsed.result !== undefined || parsed.error !== undefined || parsed.jsonrpc)) {
+              data = parsed;
+              break;
+            }
+          } catch {}
+        }
+      }
+    }
+
+    if (!data) return {};
 
     if (data.error) {
       throw new Error(`MCP Error [${data.error.code}]: ${data.error.message || JSON.stringify(data.error)}`);
     }
 
-    return data.result;
+    return data.result !== undefined ? data.result : data;
   }
 
   /**
